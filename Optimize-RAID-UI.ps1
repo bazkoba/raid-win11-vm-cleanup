@@ -1,12 +1,13 @@
 #Requires -Version 5.1
 <#
-Windows 11 VM desktop preferences only. No app removal, installs or update changes.
-Menu: 4 applies the minimal desktop; 5 restores the saved desktop; 0 exits.
+Windows 11 VM desktop preferences; optional external MAS command requested by user.
+Menu: 4 minimal desktop; 5 restore desktop; 6 open external MAS; 0 exit.
+Options 4/5 do not remove/install apps or change Windows Update.
 Applies to the currently signed-in desktop user and restarts that user's Explorer.
 File Explorer windows may close; finish any file copies before applying/restoring.
 #>
 [CmdletBinding()]
-param([ValidateSet('Menu','Apply','Restore','Preview')][string]$Action='Menu')
+param([ValidateSet('Menu','Apply','Restore','Preview','Activation')][string]$Action='Menu')
 
 $ErrorActionPreference='Stop'
 if ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Action -ne 'Preview') {
@@ -194,19 +195,33 @@ function Invoke-RaidUiRestore {
     Write-Host 'Previous desktop preferences restored.' -ForegroundColor Green
 }
 
+function Invoke-RaidActivationTool {
+    Write-Host 'Opening the external MAS command requested by the user:' -ForegroundColor Cyan
+    Write-Host 'irm https://get.activated.win | iex'
+    Write-Host 'This runs third-party code and can request administrator access.'
+    Write-Host 'Option 5 restores desktop preferences only; it does not undo actions performed in MAS.'
+    $powerShellExe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    # A separate interactive process keeps the external script out of this menu's scope.
+    $tool=Start-Process -FilePath $powerShellExe -ArgumentList '-NoProfile -Command "irm https://get.activated.win | iex"' -Wait -PassThru
+    Write-Host ('External PowerShell window closed. Exit code: '+$tool.ExitCode)
+}
+
 if ($Action -eq 'Menu') {
     Write-Host ''
     Write-Host 'RAID VM - Menu giao dien' -ForegroundColor Cyan
     Write-Host '4. Toi gian giao dien: Start ben trai, an thoi tiet/Search/Task View, giam hieu ung'
     Write-Host '5. Khoi phuc giao dien da luu'
+    Write-Host '6. Mo MAS: irm https://get.activated.win | iex (cong cu ben thu ba)'
     Write-Host '0. Thoat'
     Write-Host 'Luu y: 4/5 tai lai taskbar; cua so File Explorer co the dong. Hoan tat chep file truoc.'
-    switch (Read-Host 'Chon 4, 5 hoac 0') {
+    switch (Read-Host 'Chon 4, 5, 6 hoac 0') {
         '4' {$Action='Apply'}
         '5' {$Action='Restore'}
+        '6' {$Action='Activation'}
         '0' {return}
         default {Write-Host 'Khong thay doi gi.';return}
     }
 }
 if ($Action -eq 'Apply') { Invoke-RaidUiApply }
 if ($Action -eq 'Restore') { Invoke-RaidUiRestore }
+if ($Action -eq 'Activation') { Invoke-RaidActivationTool }
