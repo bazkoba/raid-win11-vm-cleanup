@@ -1,10 +1,10 @@
 {
   "Schema": 1,
-  "Version": "1.0.0",
+  "Version": "1.0.1",
   "Files": [
     {
       "Name": "RAID-Toolkit.ps1",
-      "Sha256": "066399ec2efd580cb46ffbb8bddae3bb3287e17c8a2184cfd5fd3f2820e08942"
+      "Sha256": "7ac30a5e2cb5f902bc0ed5e1e03d796381d1465bc7f159661c78e73142a9d8f4"
     },
     {
       "Name": "Invoke-RAID-Task.ps1",
