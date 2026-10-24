@@ -90,7 +90,8 @@ function Invoke-RaidChildModule([string]$ModuleName,[hashtable]$Parameters,[stri
     if(-not (Test-Path -LiteralPath $modulePath -PathType Leaf)){throw ('Thiếu module: '+$ModuleName)}
     # Only fixed source is encoded. All data (paths and parameters) is decoded
     # from JSON, never interpolated as PowerShell executable source.
-    $payload=[pscustomobject]@{ModulePath=$modulePath;Parameters=$Parameters}
+    $errorDetailsPath=Join-Path $RunFolder ($StepName+'.error-details.txt')
+    $payload=[pscustomobject]@{ModulePath=$modulePath;Parameters=$Parameters;ErrorDetailsPath=$errorDetailsPath}
     $payloadBase64=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $payload -Depth 8 -Compress)))
     $childSource=@'
 $ErrorActionPreference='Stop'
@@ -104,7 +105,15 @@ foreach($property in $payload.Parameters.PSObject.Properties){$invokeParameters[
 try {
     & ([string]$payload.ModulePath) @invokeParameters *>&1 | Out-String -Stream -Width 220 | ForEach-Object {[Console]::WriteLine($_)}
     exit 0
-} catch {[Console]::Error.WriteLine(($_ | Out-String));exit 1}
+} catch {
+    $failure=$_
+    try {
+        $details=($failure | Format-List * -Force | Out-String -Width 220)+[Environment]::NewLine+$failure.ScriptStackTrace
+        [IO.File]::WriteAllText([string]$payload.ErrorDetailsPath,$details,[Text.UTF8Encoding]::new($true))
+    } catch {[Console]::Error.WriteLine('Không ghi được nhật ký lỗi chi tiết.')}
+    [Console]::Error.WriteLine($failure.Exception.GetBaseException().Message)
+    exit 1
+}
 '@
     $childSource=$childSource.Replace('__PAYLOAD__',$payloadBase64)
     $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childSource))
@@ -132,7 +141,9 @@ try {
         [IO.File]::WriteAllText($errPath,$stderr,[Text.UTF8Encoding]::new($true))
         if($stdout){Write-Host $stdout}
         if($stderr){Write-Host $stderr -ForegroundColor Yellow}
-        return [pscustomobject]@{ExitCode=$process.ExitCode;OutputPath=$outPath;ErrorPath=$errPath}
+        $detailsPath=if($process.ExitCode -ne 0 -and (Test-Path -LiteralPath $errorDetailsPath -PathType Leaf)){$errorDetailsPath}else{$null}
+        if($detailsPath){Write-Host ('Chi tiết lỗi: '+$detailsPath)}
+        return [pscustomobject]@{ExitCode=$process.ExitCode;OutputPath=$outPath;ErrorPath=$errPath;ErrorDetailsPath=$detailsPath}
     } finally {$process.Dispose()}
 }
 
@@ -153,7 +164,7 @@ function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder)
             Write-Host 'Mở lệnh bên thứ ba theo lựa chọn của người dùng. Đóng cửa sổ đó để quay lại công cụ.'
             $external=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList '-NoProfile -Command "irm https://get.activated.win | iex"' -WindowStyle Normal -Wait -PassThru
             if($external.ExitCode -ne 0){throw ('Công cụ ngoài đóng với mã lỗi '+$external.ExitCode+'.')}
-            return [pscustomobject]@{Action=$Action;Name=(Get-RaidStepLabel $Action);State='Completed';DisplayState='Hoàn tất';Success=$true;Partial=$false;Message='Cửa sổ công cụ ngoài đã đóng. Chưa xác minh kết quả kích hoạt.';RebootRequired=$false;ExitCode=$external.ExitCode;DurationSeconds=[Math]::Round(((Get-Date)-$started).TotalSeconds,1);ModuleResult=$null;OutputPath=$null;ErrorPath=$null}
+            return [pscustomobject]@{Action=$Action;Name=(Get-RaidStepLabel $Action);State='Completed';DisplayState='Hoàn tất';Success=$true;Partial=$false;Message='Cửa sổ công cụ ngoài đã đóng. Chưa xác minh kết quả kích hoạt.';RebootRequired=$false;ExitCode=$external.ExitCode;DurationSeconds=[Math]::Round(((Get-Date)-$started).TotalSeconds,1);ModuleResult=$null;OutputPath=$null;ErrorPath=$null;ErrorDetailsPath=$null}
         }
         default {throw 'Tác vụ không hợp lệ.'}
     }
@@ -167,7 +178,7 @@ function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder)
     $partial=-not $success -and [bool]$moduleResult.Partial
     $state=if($success){'Completed'}elseif($partial){'Partial'}else{'Failed'}
     $message=if($moduleResult.Message){[string]$moduleResult.Message}elseif($success){'Hoàn tất.'}else{'Chưa hoàn tất; xem chi tiết trong nhật ký.'}
-    return [pscustomobject]@{Action=$Action;Name=(Get-RaidStepLabel $Action);State=$state;DisplayState=(Get-RaidStepStateLabel $state);Success=[bool]$success;Partial=[bool]$partial;Message=$message;RebootRequired=([bool]$moduleResult.RebootRequired -or [bool]$moduleResult.RestartRequired);ExitCode=$child.ExitCode;DurationSeconds=[Math]::Round(((Get-Date)-$started).TotalSeconds,1);ModuleResult=$moduleResult;OutputPath=$child.OutputPath;ErrorPath=$child.ErrorPath}
+    return [pscustomobject]@{Action=$Action;Name=(Get-RaidStepLabel $Action);State=$state;DisplayState=(Get-RaidStepStateLabel $state);Success=[bool]$success;Partial=[bool]$partial;Message=$message;RebootRequired=([bool]$moduleResult.RebootRequired -or [bool]$moduleResult.RestartRequired);ExitCode=$child.ExitCode;DurationSeconds=[Math]::Round(((Get-Date)-$started).TotalSeconds,1);ModuleResult=$moduleResult;OutputPath=$child.OutputPath;ErrorPath=$child.ErrorPath;ErrorDetailsPath=$child.ErrorDetailsPath}
 }
 
 function Invoke-RaidTaskRequest([string]$Path) {
@@ -196,7 +207,7 @@ function Invoke-RaidTaskRequest([string]$Path) {
             Write-RaidTaskJson $statusPath $status
             Write-Host ('--- '+$status.Step+'/'+$status.TotalSteps+': '+$status.Message+' ---')
             try {$step=Invoke-RaidTaskStep -Action $stepAction -Apps $apps -RunFolder $runFolder}
-            catch {$step=[pscustomobject]@{Action=$stepAction;Name=(Get-RaidStepLabel $stepAction);State='Failed';DisplayState='Lỗi';Success=$false;Partial=$false;Message=$_.Exception.GetBaseException().Message;RebootRequired=$false;ExitCode=1;DurationSeconds=$null;ModuleResult=$null;OutputPath=$null;ErrorPath=$null};Write-Host $step.Message -ForegroundColor Yellow}
+            catch {$step=[pscustomobject]@{Action=$stepAction;Name=(Get-RaidStepLabel $stepAction);State='Failed';DisplayState='Lỗi';Success=$false;Partial=$false;Message=$_.Exception.GetBaseException().Message;RebootRequired=$false;ExitCode=1;DurationSeconds=$null;ModuleResult=$null;OutputPath=$null;ErrorPath=$null;ErrorDetailsPath=$null};Write-Host $step.Message -ForegroundColor Yellow}
             $status.Results=@($status.Results)+@($step)
             $status.RebootRequired=$status.RebootRequired -or $step.RebootRequired
             Write-RaidTaskJson $statusPath $status
