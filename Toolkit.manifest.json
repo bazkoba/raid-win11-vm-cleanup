@@ -1,6 +1,6 @@
 {
   "Schema": 1,
-  "Version": "1.0.1",
+  "Version": "1.0.2",
   "Files": [
     {
       "Name": "RAID-Toolkit.ps1",
@@ -8,11 +8,11 @@
     },
     {
       "Name": "Invoke-RAID-Task.ps1",
-      "Sha256": "20c9790f9fef2886d2fa6c69c238b34a33475c4c944f1659e2976e263356ce5a"
+      "Sha256": "86c729d29f60c305fa65a3272b13adbfa9653aac0679241525b384746db7fa94"
     },
     {
       "Name": "Install-RAID-Apps.ps1",
-      "Sha256": "361b3dbcfd4b2a8ef8ee9b9d2ab8d78f75504736474186c09be7404eb997a699"
+      "Sha256": "ec22a631982cd6de6c74f55fd07b07d53dbc8aa0ba230abf6a2850836656ac97"
     },
     {
       "Name": "Manage-RAID-Update.ps1",
