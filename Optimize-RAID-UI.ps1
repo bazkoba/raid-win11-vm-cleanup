@@ -2,6 +2,7 @@
 <#
 Windows 11 VM desktop preferences; optional external MAS command requested by user.
 Menu: 4 minimal desktop; 5 restore desktop; 6 open external MAS; 0 exit.
+Version 3: verify each preference; continue when a protected preference is denied.
 Options 4/5 do not remove/install apps or change Windows Update.
 Applies to the currently signed-in desktop user and restarts that user's Explorer.
 File Explorer windows may close; finish any file copies before applying/restoring.
@@ -27,14 +28,25 @@ function Get-RaidRegistrySnapshot([string]$Path,[string]$Name) {
         return [pscustomobject]@{Path=$Path;Name=$Name;Exists=$exists;Kind=$kind;Value=$value}
     } finally { if ($key) { $key.Dispose() } }
 }
+function Test-RaidValueEqual($Left,$Right) {
+    return (ConvertTo-Json -InputObject $Left -Depth 8 -Compress) -ceq (ConvertTo-Json -InputObject $Right -Depth 8 -Compress)
+}
+function Test-RaidRegistrySnapshotEqual($Left,$Right) {
+    if ([bool]$Left.Exists -ne [bool]$Right.Exists) { return $false }
+    if (-not $Left.Exists) { return $true }
+    return $Left.Kind -eq $Right.Kind -and (Test-RaidValueEqual $Left.Value $Right.Value)
+}
 function Set-RaidRegistrySnapshot($Entry) {
+    $before=Get-RaidRegistrySnapshot $Entry.Path $Entry.Name
+    # A protected value that already matches needs no write, including during restore.
+    if (Test-RaidRegistrySnapshotEqual $before $Entry) { return }
     if (-not $Entry.Exists) {
         $key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey([string]$Entry.Path,$true)
         try { if ($key) { $key.DeleteValue([string]$Entry.Name,$false) } }
         finally { if ($key) { $key.Dispose() } }
         return
     }
-    $key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey([string]$Entry.Path)
+    $key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey([string]$Entry.Path,$true)
     try {
         $kind=[Enum]::Parse([Microsoft.Win32.RegistryValueKind],[string]$Entry.Kind)
         $value=$Entry.Value
@@ -48,7 +60,63 @@ function Set-RaidRegistrySnapshot($Entry) {
             default {throw ('Unsupported registry kind: '+$Entry.Kind)}
         }
         $key.SetValue([string]$Entry.Name,$value,$kind)
-    } finally { $key.Dispose() }
+    } finally { if ($key) { $key.Dispose() } }
+}
+
+function Get-RaidNativePreference([string]$Name) {
+    switch ($Name) {
+        'UiEffects' { return [RaidVmUiNative]::GetFlag(0x103e) }
+        'ClientAnimation' { return [RaidVmUiNative]::GetFlag(0x1042) }
+        'DropShadow' { return [RaidVmUiNative]::GetFlag(0x1024) }
+        'MinAnimation' { return [RaidVmUiNative]::GetMinAnimation() }
+        'Wallpaper' { return [RaidVmUiNative]::GetWallpaper() }
+        'Background' { return [RaidVmUiNative]::GetBackground() }
+        default { throw ('Unknown native preference: '+$Name) }
+    }
+}
+function Set-RaidNativePreference([string]$Name,$Value) {
+    switch ($Name) {
+        'UiEffects' { [RaidVmUiNative]::SetFlag(0x103f,[bool]$Value) }
+        'ClientAnimation' { [RaidVmUiNative]::SetFlag(0x1043,[bool]$Value) }
+        'DropShadow' { [RaidVmUiNative]::SetFlag(0x1025,[bool]$Value) }
+        'MinAnimation' { [RaidVmUiNative]::SetMinAnimation([bool]$Value) }
+        'Wallpaper' { [RaidVmUiNative]::SetWallpaper([string]$Value) }
+        'Background' { [RaidVmUiNative]::SetBackground([int]$Value) }
+        default { throw ('Unknown native preference: '+$Name) }
+    }
+}
+function Invoke-RaidUiChanges([object[]]$Registry,$Native) {
+    foreach ($entry in $Registry) {
+        $label='HKCU\'+$entry.Path+'\'+$entry.Name
+        try {
+            Set-RaidRegistrySnapshot $entry
+            $actual=Get-RaidRegistrySnapshot $entry.Path $entry.Name
+            if (-not (Test-RaidRegistrySnapshotEqual $actual $entry)) { throw 'Read-back verification did not match the requested registry value.' }
+            Write-Host ('[OK] '+$label)
+            [pscustomobject]@{Name=$label;Success=$true;Error=$null}
+        } catch {
+            $cause=$_.Exception.GetBaseException()
+            $detail=$cause.GetType().Name+': '+$cause.Message+' (HRESULT '+$cause.HResult+')'
+            Write-Warning -Message ('[FAILED] '+$label+' -- '+$detail) -WarningAction Continue
+            [pscustomobject]@{Name=$label;Success=$false;Error=$detail}
+        }
+    }
+    foreach ($property in $Native.PSObject.Properties) {
+        $label='Desktop API: '+$property.Name
+        try {
+            $actual=Get-RaidNativePreference $property.Name
+            if (-not (Test-RaidValueEqual $actual $property.Value)) { Set-RaidNativePreference $property.Name $property.Value }
+            $actual=Get-RaidNativePreference $property.Name
+            if (-not (Test-RaidValueEqual $actual $property.Value)) { throw 'Read-back verification did not match the requested desktop preference.' }
+            Write-Host ('[OK] '+$label)
+            [pscustomobject]@{Name=$label;Success=$true;Error=$null}
+        } catch {
+            $cause=$_.Exception.GetBaseException()
+            $detail=$cause.GetType().Name+': '+$cause.Message+' (HRESULT '+$cause.HResult+')'
+            Write-Warning -Message ('[FAILED] '+$label+' -- '+$detail) -WarningAction Continue
+            [pscustomobject]@{Name=$label;Success=$false;Error=$detail}
+        }
+    }
 }
 
 $advanced='Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
@@ -167,32 +235,38 @@ function Invoke-RaidUiApply {
         }
         Save-RaidUiBackup $saved
     }
-    foreach ($setting in $settings) { Set-RaidRegistrySnapshot $setting }
-    [RaidVmUiNative]::SetFlag(0x103f,$false)
-    [RaidVmUiNative]::SetFlag(0x1043,$false)
-    [RaidVmUiNative]::SetFlag(0x1025,$false)
-    [RaidVmUiNative]::SetMinAnimation($false)
-    [RaidVmUiNative]::SetWallpaper('')
-    [RaidVmUiNative]::SetBackground(0x181818)
-    Restart-RaidExplorer
-    Write-Host 'Applied: left-aligned Start/icons; hidden Widgets/weather, Search and Task View; reduced effects; solid dark background.' -ForegroundColor Green
+    $nativeTarget=[pscustomobject]@{UiEffects=$false;ClientAnimation=$false;DropShadow=$false;MinAnimation=$false;Wallpaper='';Background=0x181818}
+    $results=@(Invoke-RaidUiChanges -Registry $settings -Native $nativeTarget)
+    $saved | Add-Member -NotePropertyName LastApplyResults -NotePropertyValue $results -Force
+    try { Save-RaidUiBackup $saved }
+    catch { Write-Warning -Message ('Could not save step results; the original backup is retained. '+$_.Exception.Message) -WarningAction Continue }
+    try { Restart-RaidExplorer }
+    catch { Write-Warning -Message ('Could not refresh Explorer. Sign out and back in to refresh the taskbar. '+$_.Exception.Message) -WarningAction Continue }
+    $failed=@($results | Where-Object {-not $_.Success})
+    Write-Host ('Apply completed: '+($results.Count-$failed.Count)+'/'+$results.Count+' preferences verified.') -ForegroundColor Cyan
+    if ($failed.Count) { Write-Warning -Message 'Some preferences could not be applied. See [FAILED] above; other preferences were still processed.' -WarningAction Continue }
+    if (@($failed | Where-Object {$_.Name -like '*\TaskbarDa'}).Count) {
+        Write-Host 'Widgets/weather was not hidden. Open Settings > Personalization > Taskbar > Widgets: Off.' -ForegroundColor Yellow
+        Write-Host 'Shortcut: Start-Process ms-settings:taskbar'
+    }
     Write-Host ('Original preferences saved: '+$statePath)
     Write-Host 'Fonts, pinned apps, installed apps, game drivers and Windows Update were not changed.'
 }
 function Invoke-RaidUiRestore {
     $saved=Read-RaidUiBackup
     if (-not $saved -or -not $saved.Active) { Write-Host 'No active UI backup to restore.';return }
-    [RaidVmUiNative]::SetFlag(0x103f,[bool]$saved.Native.UiEffects)
-    [RaidVmUiNative]::SetFlag(0x1043,[bool]$saved.Native.ClientAnimation)
-    [RaidVmUiNative]::SetFlag(0x1025,[bool]$saved.Native.DropShadow)
-    [RaidVmUiNative]::SetMinAnimation([bool]$saved.Native.MinAnimation)
-    [RaidVmUiNative]::SetWallpaper([string]$saved.Native.Wallpaper)
-    [RaidVmUiNative]::SetBackground([int]$saved.Native.Background)
-    foreach ($entry in @($saved.Registry)) { Set-RaidRegistrySnapshot $entry }
-    Restart-RaidExplorer
-    $saved.Active=$false
-    Save-RaidUiBackup $saved
-    Write-Host 'Previous desktop preferences restored.' -ForegroundColor Green
+    $results=@(Invoke-RaidUiChanges -Registry @($saved.Registry) -Native $saved.Native)
+    $failed=@($results | Where-Object {-not $_.Success})
+    $saved | Add-Member -NotePropertyName LastRestoreResults -NotePropertyValue $results -Force
+    # Retain the original backup for another restore attempt if any step failed.
+    $saved.Active=$failed.Count -gt 0
+    try { Save-RaidUiBackup $saved }
+    catch { Write-Warning -Message ('Could not update backup status. The previous backup file is retained for retry. '+$_.Exception.Message) -WarningAction Continue }
+    try { Restart-RaidExplorer }
+    catch { Write-Warning -Message ('Could not refresh Explorer. Sign out and back in to refresh the taskbar. '+$_.Exception.Message) -WarningAction Continue }
+    if ($failed.Count) {
+        Write-Warning -Message ('Restore incomplete: '+$failed.Count+' preference(s) failed. The original backup is still active; option 5 can retry.') -WarningAction Continue
+    } else { Write-Host 'Previous desktop preferences restored and verified.' -ForegroundColor Green }
 }
 
 function Invoke-RaidActivationTool {
@@ -208,7 +282,7 @@ function Invoke-RaidActivationTool {
 
 if ($Action -eq 'Menu') {
     Write-Host ''
-    Write-Host 'RAID VM - Menu giao dien' -ForegroundColor Cyan
+    Write-Host 'RAID VM - Menu giao dien v3 (xu ly tung muc bi chan)' -ForegroundColor Cyan
     Write-Host '4. Toi gian giao dien: Start ben trai, an thoi tiet/Search/Task View, giam hieu ung'
     Write-Host '5. Khoi phuc giao dien da luu'
     Write-Host '6. Mo MAS: irm https://get.activated.win | iex (cong cu ben thu ba)'
