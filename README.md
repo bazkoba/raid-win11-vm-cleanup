@@ -4,15 +4,17 @@ Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Lege
 
 ## Mở bằng một lệnh
 
-Trong **máy ảo**, mở **Windows PowerShell**, bằng đúng tài khoản đang đăng nhập Desktop, rồi dán:
+Đóng cửa sổ RAID VM Toolkit cũ nếu đang mở, để lần chạy mới dùng đúng bộ công cụ vừa tải. Trong **máy ảo**, mở **Windows PowerShell**, bằng đúng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/3e56dc22178e47c571479496c7efb2162c0de1c3/Start-RAID-Toolkit.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/dc5619f9291960c56f5382893371e0c87931cab3/Start-RAID-Toolkit.ps1' | iex
 ```
 
 Không cần tải ZIP, Git, GitHub Desktop hoặc cài bộ SDK. Máy ảo cần Internet để tải công cụ và bộ cài được chọn. Lệnh chỉ mở bảng điều khiển, chưa tự cài, gỡ hay đổi thiết lập. Các tác vụ cần quản trị sẽ yêu cầu UAC; dùng đúng tài khoản Windows hiện tại.
 
 **Bản sửa khởi chạy 1.0.1:** chỉ báo đã mở khi cửa sổ WinForms đã hiện và trả trạng thái sẵn sàng. Nếu cửa sổ lỗi, tiến trình thoát hoặc chờ quá 20 giây, PowerShell báo lỗi kèm đường dẫn nhật ký. Bản này cũng tránh bị phiên giao diện ẩn của bản cũ chặn lại.
+
+**Bản 1.0.2 sửa luồng cài phần mềm:** tải có thử lại và phương thức curl tích hợp của Windows; một app tải/xác minh lỗi không chặn các app khác đã xác minh. Nếu Chrome còn lỗi mạng, có thể bỏ chọn Chrome ở mục 2 để cài các mục còn lại. Mục Làm nhanh vẫn dừng trước khi dọn app nếu còn app được chọn chưa cài xong.
 
 Chỉ chạy trong máy ảo. Công cụ chặn tên máy thật đã biết trong phiên thiết lập này; đây không phải cơ chế nhận diện mọi máy thật.
 
@@ -44,8 +46,10 @@ Dọn app hoặc tắt hiệu ứng không bảo đảm tăng FPS hay sửa lỗ
 ## Cài phần mềm và thư viện
 
 - Bộ cài từ Google, RARLAB và Microsoft; kiểm tra chữ ký Authenticode và nhà phát hành trước khi chạy. .NET được đối chiếu thêm SHA-512 trong metadata Microsoft.
-- Các bộ cài cần dùng được tải và xác minh trước khi bắt đầu cài. Nếu bước chuẩn bị/xác minh lỗi, chưa khởi chạy bộ cài nào của lần đó.
-- Nếu một bộ cài lỗi trong giai đoạn cài, các bộ cài độc lập còn lại vẫn được thử và có kết quả riêng. Phần mềm đã cài thành công trước lỗi không tự được gỡ lại.
+- Mỗi bộ cài phải tải và xác minh thành công trước khi được chạy. App nào tải hoặc xác minh lỗi sẽ bị bỏ qua; các app khác đã xác minh vẫn được cài và có kết quả riêng.
+- Kết nối tải lỗi được thử lại có giới hạn, với curl HTTP/1.1 của Windows làm phương thức dự phòng. Giữ kiểm tra chứng chỉ HTTPS, chữ ký và SHA-512; không dùng máy chủ tải bên thứ ba.
+- Bộ cài đã xác minh được lưu để thử lại, luôn kiểm tra chữ ký/hash trước khi dùng. Các URL thay đổi theo phiên bản như Chrome/WinRAR chỉ dùng cache tối đa 24 giờ. Cách thử lại không bảo đảm vượt qua một đường mạng/proxy đang chặn Google.
+- Nếu một bộ cài lỗi trong giai đoạn cài, các bộ cài độc lập còn lại vẫn được thử. Phần mềm đã cài thành công trước lỗi không tự được gỡ lại.
 - Giữ bản Chrome/WinRAR và dòng runtime 8.0.x/14.x đã có; công cụ không phải trình cập nhật phiên bản vá cho phần mềm hiện có.
 - **WinRAR là bản dùng thử**, không kèm bản quyền hoặc công cụ kích hoạt WinRAR.
 - **.NET Desktop Runtime 8 x64** phục vụ phần mềm cần đúng phiên bản 8; không cài SDK. .NET 8 hết hỗ trợ ngày **10/11/2026**. Giữ runtime cần thiết và theo dõi cập nhật từ hãng phần mềm. [.NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core)
@@ -82,6 +86,7 @@ Chỉ khi chủ động chọn mục 6 và xác nhận, công cụ mở cửa s�
 | Sao lưu giao diện | `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json` |
 | Sao lưu chính sách Update | `C:\ProgramData\RaidVM-Toolkit\Update\before.json` |
 | Bộ cài/nhật ký cài phần mềm | `C:\ProgramData\RaidVM-Toolkit\Install\<ngày-giờ-mã>` |
+| Bộ cài lưu tạm có xác minh | `C:\ProgramData\RaidVM-Toolkit\InstallerCache` |
 | Danh sách app trước/sau khi dọn | `C:\ProgramData\RaidVM-Cleanup\<ngày-giờ>` |
 
 Bản sao lưu giao diện từ menu cũ vẫn dùng được. Khi khôi phục lỗi một phần, bản sao lưu tiếp tục được giữ để thử lại. Không tải nhật ký hoặc bản sao lưu cá nhân lên repo công khai.
@@ -89,6 +94,8 @@ Bản sao lưu giao diện từ menu cũ vẫn dùng được. Khi khôi phục 
 ## Trạng thái kiểm tra
 
 Đã kiểm tra trên Windows PowerShell 5.1: cú pháp, hiển thị WinForms tiếng Việt, xử lý UTF-8/BOM, truyền tham số và kết quả qua tiến trình con, hash/cache bộ khởi chạy, luồng Làm nhanh, lỗi từng bước và sao lưu/khôi phục. Các thao tác cài/gỡ và chặn cập nhật được kiểm thử bằng mô phỏng; phần registry thử nghiệm chỉ dùng khóa thử riêng. Đã chạy thực tế chức năng chỉ đọc trạng thái Update và xem trước bộ cài.
+
+Đã tải thực tế bộ cài Chrome từ Google bằng curl của Windows trên host và xác minh chữ ký Google hợp lệ; chưa chạy bộ cài đó. Kiểm thử mô phỏng thêm lỗi Chrome mất mạng trong khi WinRAR/.NET vẫn được cài, tải thử lại/curl dự phòng và cache bị hỏng/quá hạn. Lỗi đầy đủ được giữ ở tệp `<tác vụ>.error-details.txt`; trạng thái chính hiển thị thông báo ngắn hơn.
 
 **Chưa chạy toàn bộ cài/gỡ/chặn cập nhật trong máy ảo kiểm thử**, chưa chứng minh tăng hiệu năng hoặc tương thích mọi bản Windows/game. Ảnh xem thử giao diện không phải bằng chứng đã tối ưu máy ảo.
 
