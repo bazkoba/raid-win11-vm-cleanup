@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 Windows 11 VM desktop preferences; optional external MAS command requested by user.
 Menu: 4 minimal desktop; 5 restore desktop; 6 open external MAS; 0 exit.
@@ -8,7 +8,7 @@ Applies to the currently signed-in desktop user and restarts that user's Explore
 File Explorer windows may close; finish any file copies before applying/restoring.
 #>
 [CmdletBinding()]
-param([ValidateSet('Menu','Apply','Restore','Preview','Activation')][string]$Action='Menu')
+param([ValidateSet('Menu','Apply','Restore','Preview','Activation')][string]$Action='Menu',[string]$ResultPath)
 
 $ErrorActionPreference='Stop'
 if ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Action -ne 'Preview') {
@@ -30,6 +30,12 @@ function Get-RaidRegistrySnapshot([string]$Path,[string]$Name) {
 }
 function Test-RaidValueEqual($Left,$Right) {
     return (ConvertTo-Json -InputObject $Left -Depth 8 -Compress) -ceq (ConvertTo-Json -InputObject $Right -Depth 8 -Compress)
+}
+function Save-RaidUiOperationResult([string]$Operation,[object[]]$Results,[string]$Message) {
+    if (-not $ResultPath) { return }
+    $failed=@($Results | Where-Object {-not $_.Success})
+    [pscustomobject]@{Action=$Operation;Success=($failed.Count -eq 0);Partial=($failed.Count -gt 0 -and $failed.Count -lt $Results.Count);Message=$Message;Results=@($Results);RebootRequired=$false;BackupPath=$statePath} |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ResultPath -Encoding UTF8
 }
 function Test-RaidRegistrySnapshotEqual($Left,$Right) {
     if ([bool]$Left.Exists -ne [bool]$Right.Exists) { return $false }
@@ -135,6 +141,7 @@ if ($Action -eq 'Preview') {
     Write-Host 'Also disables UI animation/drop-shadow preferences and uses a solid dark background.'
     Write-Host 'Keeps existing pinned apps, fonts, drivers, game, power and Windows Update settings.'
     Write-Host 'Preview only: no preferences changed and no Explorer restart.'
+    Save-RaidUiOperationResult 'Preview' @() 'Chỉ xem trước; chưa đổi thiết lập giao diện.'
     return
 }
 
@@ -251,10 +258,17 @@ function Invoke-RaidUiApply {
     }
     Write-Host ('Original preferences saved: '+$statePath)
     Write-Host 'Fonts, pinned apps, installed apps, game drivers and Windows Update were not changed.'
+    $resultMessage='Đã kiểm tra '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập giao diện.'
+    if(@($failed|Where-Object {$_.Name -like '*\TaskbarDa'}).Count){$resultMessage+=' Thời tiết bị Windows chặn: vào Settings > Personalization > Taskbar > Widgets để tắt.'}
+    Save-RaidUiOperationResult 'Apply' $results $resultMessage
 }
 function Invoke-RaidUiRestore {
     $saved=Read-RaidUiBackup
-    if (-not $saved -or -not $saved.Active) { Write-Host 'No active UI backup to restore.';return }
+    if (-not $saved -or -not $saved.Active) {
+        Write-Host 'No active UI backup to restore.'
+        Save-RaidUiOperationResult 'Restore' @() 'Không có bản sao lưu giao diện đang hoạt động để khôi phục.'
+        return
+    }
     $results=@(Invoke-RaidUiChanges -Registry @($saved.Registry) -Native $saved.Native)
     $failed=@($results | Where-Object {-not $_.Success})
     $saved | Add-Member -NotePropertyName LastRestoreResults -NotePropertyValue $results -Force
@@ -267,6 +281,7 @@ function Invoke-RaidUiRestore {
     if ($failed.Count) {
         Write-Warning -Message ('Restore incomplete: '+$failed.Count+' preference(s) failed. The original backup is still active; option 5 can retry.') -WarningAction Continue
     } else { Write-Host 'Previous desktop preferences restored and verified.' -ForegroundColor Green }
+    Save-RaidUiOperationResult 'Restore' $results ('Đã khôi phục '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập. Các mục lỗi vẫn giữ bản sao lưu để thử lại.')
 }
 
 function Invoke-RaidActivationTool {
