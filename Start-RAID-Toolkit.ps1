@@ -8,8 +8,8 @@ Opening this launcher does not install/remove apps or change Windows settings.
 param([switch]$Demo,[switch]$DownloadOnly)
 
 $ErrorActionPreference='Stop'
-$bundleCommit='ac67f73f1972f3bef7f69ae0e737501d44649219'
-$manifestSha256='C1F83E3551A129EF69AE31583E5B748CE5BDE7C9E3B81F448C01699A79A6E77E'
+$bundleCommit='270f22fc5ca4dc1dfaa8cbd77a6e315f741031b4'
+$manifestSha256='3E7E9A371E52AF897A7BBBFF6372AD22A3DC0B9701D4568BAA133309BFFFB514'
 $script:RaidToolkitSource='https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup'
 $script:RaidToolkitFiles=@(
     'RAID-Toolkit.ps1'
@@ -125,12 +125,95 @@ function Get-RaidVerifiedBundle([string]$Commit,[string]$ManifestHash,[string]$C
     return [pscustomobject]@{Root=$root;Commit=$Commit.ToLowerInvariant();FilesVerified=@($manifest.Files).Count}
 }
 
+function Start-RaidGuiProcess([string]$PowerShell,[string]$Arguments,[string]$StandardOutputPath,[string]$StandardErrorPath) {
+    # Hide only PowerShell's console through its own argument. STARTUPINFO's
+    # Hidden style can also suppress the first WinForms window on Windows 11.
+    return Start-Process -FilePath $PowerShell -ArgumentList $Arguments -PassThru -RedirectStandardOutput $StandardOutputPath -RedirectStandardError $StandardErrorPath
+}
+
+function Get-RaidGuiProcessState([object]$Process) {
+    $Process.Refresh()
+    $exited=$Process.HasExited
+    $exitCode=$null;$windowHandle=0L
+    if ($exited) { $exitCode=$Process.ExitCode }
+    else { $windowHandle=$Process.MainWindowHandle.ToInt64() }
+    return [pscustomobject]@{Pid=$Process.Id;HasExited=$exited;ExitCode=$exitCode;WindowHandle=$windowHandle}
+}
+
+function Get-RaidGuiStartupFailure([string]$Message,[string]$LogDirectory) {
+    $errorPath=Join-Path $LogDirectory 'stderr.log'
+    if (Test-Path -LiteralPath $errorPath -PathType Leaf) {
+        try {
+            $details=[IO.File]::ReadAllText($errorPath).Trim()
+            if ($details.Length -gt 4000) { $details=$details.Substring($details.Length-4000) }
+            if ($details) { $Message+="`r`n"+$details }
+        } catch { }
+    }
+    return ($Message+"`r`nStartup logs: "+$LogDirectory)
+}
+
+function Wait-RaidToolkitReady([object]$Process,[string]$StatusPath,[string]$LaunchId,[string]$LogDirectory,[int]$TimeoutSeconds=20,[int]$PollMilliseconds=100) {
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    try {
+        do {
+            $status=$null
+            if (Test-Path -LiteralPath $StatusPath -PathType Leaf) {
+                # A report may be in the middle of an atomic file replacement.
+                try { $status=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($StatusPath,[Text.Encoding]::UTF8)) } catch { }
+            }
+            try { $processState=Get-RaidGuiProcessState $Process }
+            catch { throw (Get-RaidGuiStartupFailure ('Could not read the toolkit process status. '+$_.Exception.GetBaseException().Message) $LogDirectory) }
+            if ($null -ne $status) {
+                if ($status.LaunchId -cne $LaunchId -or [string]$status.Pid -cne [string]$processState.Pid) {
+                    throw (Get-RaidGuiStartupFailure 'The startup report did not match the launched process.' $LogDirectory)
+                }
+                if ($status.State -ceq 'Failed') {
+                    $message='The toolkit reported a startup error.'
+                    if ($status.Message) { $message+=' '+[string]$status.Message }
+                    if ($status.Error) { $message+="`r`n"+[string]$status.Error }
+                    throw (Get-RaidGuiStartupFailure $message $LogDirectory)
+                }
+                if ($status.State -ceq 'AlreadyRunning') { return $status }
+                if ($status.State -cne 'Ready') {
+                    throw (Get-RaidGuiStartupFailure 'The toolkit returned an unsupported startup status.' $LogDirectory)
+                }
+                $reportedHandle=0L
+                if (-not [long]::TryParse([string]$status.WindowHandle,[ref]$reportedHandle) -or $reportedHandle -le 0) {
+                    throw (Get-RaidGuiStartupFailure 'The toolkit did not report a valid visible window handle.' $LogDirectory)
+                }
+                # Refreshing process metadata checks for a real visible window;
+                # a JSON report alone must never cause a successful launch message.
+                if (-not $processState.HasExited -and $processState.WindowHandle -gt 0 -and $processState.WindowHandle -eq $reportedHandle) {
+                    return $status
+                }
+            }
+            if ($processState.HasExited) {
+                throw (Get-RaidGuiStartupFailure ('The toolkit process exited before its window was ready (exit code '+[string]$processState.ExitCode+').') $LogDirectory)
+            }
+            if ($timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+                throw (Get-RaidGuiStartupFailure ('No visible toolkit window was confirmed within '+$TimeoutSeconds+' seconds.') $LogDirectory)
+            }
+            Start-Sleep -Milliseconds $PollMilliseconds
+        } while ($true)
+    } finally { $timer.Stop() }
+}
+
 function Start-RaidToolkitWindow([string]$Root,[bool]$DemoMode) {
+    $launchId=[guid]::NewGuid().ToString('N')
+    $launchBase=Join-Path $env:LOCALAPPDATA 'RaidVM-Toolkit\Launches'
+    $logDirectory=Join-Path $launchBase ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$launchId)
+    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+    $statusPath=Join-Path $logDirectory 'startup.json'
     $powerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments='-NoProfile -STA -ExecutionPolicy Bypass -File "'+(Join-Path $Root 'RAID-Toolkit.ps1')+'"'
+    $arguments='-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+(Join-Path $Root 'RAID-Toolkit.ps1')+'" -StartupStatusPath "'+$statusPath+'" -LaunchId "'+$launchId+'"'
     if ($DemoMode) { $arguments+=' -Demo' }
-    $process=Start-Process -FilePath $powerShell -ArgumentList $arguments -WindowStyle Hidden -PassThru
-    return $process.Id
+    try {
+        $process=Start-RaidGuiProcess $powerShell $arguments (Join-Path $logDirectory 'stdout.log') (Join-Path $logDirectory 'stderr.log')
+    } catch {
+        throw (Get-RaidGuiStartupFailure ('PowerShell could not launch the toolkit. '+$_.Exception.GetBaseException().Message) $logDirectory)
+    }
+    try { return Wait-RaidToolkitReady $process $statusPath $launchId $logDirectory }
+    finally { if ($process -is [Diagnostics.Process]) { $process.Dispose() } }
 }
 
 function Invoke-RaidToolkitBootstrap([string]$Commit,[string]$ManifestHash,[switch]$DemoMode,[switch]$OnlyDownload) {
@@ -140,8 +223,12 @@ function Invoke-RaidToolkitBootstrap([string]$Commit,[string]$ManifestHash,[swit
     if ($OnlyDownload) {
         return ($bundle | ConvertTo-Json -Depth 4 -Compress)
     }
-    $null=Start-RaidToolkitWindow $bundle.Root ([bool]$DemoMode)
-    Write-Host 'RAID VM Toolkit opened. Choose an action in the window; no setup action runs automatically.'
+    $startup=Start-RaidToolkitWindow $bundle.Root ([bool]$DemoMode)
+    if ($startup.State -ceq 'Ready') {
+        Write-Host 'RAID VM Toolkit opened. Choose an action in the window; no setup action runs automatically.'
+    } elseif ($startup.State -ceq 'AlreadyRunning') {
+        Write-Host ('RAID VM Toolkit is already running in this account. '+[string]$startup.Message)
+    } else { throw 'The toolkit did not confirm that its window was ready.' }
 }
 
 try { Invoke-RaidToolkitBootstrap -Commit $bundleCommit -ManifestHash $manifestSha256 -DemoMode:$Demo -OnlyDownload:$DownloadOnly }
