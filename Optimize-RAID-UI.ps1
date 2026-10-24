@@ -2,13 +2,13 @@
 <#
 Windows 11 VM desktop preferences; optional external MAS command requested by user.
 Menu: 4 minimal desktop; 5 restore desktop; 6 open external MAS; 0 exit.
-Version 3: verify each preference; continue when a protected preference is denied.
+Version 4: preserve the current theme/wallpaper; verify each preference independently.
 Options 4/5 do not remove/install apps or change Windows Update.
 Applies to the currently signed-in desktop user and restarts that user's Explorer.
 File Explorer windows may close; finish any file copies before applying/restoring.
 #>
 [CmdletBinding()]
-param([ValidateSet('Menu','Apply','Restore','Preview','Activation')][string]$Action='Menu',[string]$ResultPath)
+param([ValidateSet('Menu','Apply','Restore','RestoreAppearance','Preview','Activation')][string]$Action='Menu',[string]$ResultPath)
 
 $ErrorActionPreference='Stop'
 if ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Action -ne 'Preview') {
@@ -132,16 +132,14 @@ $settings=@(
     [pscustomobject]@{Path=$advanced;Name='ShowTaskViewButton';Kind='DWord';Value=0;Exists=$true}
     [pscustomobject]@{Path='Software\Microsoft\Windows\CurrentVersion\Search';Name='SearchboxTaskbarMode';Kind='DWord';Value=0;Exists=$true}
     [pscustomobject]@{Path='Software\Microsoft\Windows\CurrentVersion\Themes\Personalize';Name='EnableTransparency';Kind='DWord';Value=0;Exists=$true}
-    [pscustomobject]@{Path='Control Panel\Colors';Name='Background';Kind='String';Value='24 24 24';Exists=$true}
-    [pscustomobject]@{Path='Control Panel\Desktop';Name='Wallpaper';Kind='String';Value='';Exists=$true}
 )
 
 if ($Action -eq 'Preview') {
     $settings | Select-Object Name,Value | Format-Table -AutoSize
-    Write-Host 'Also disables UI animation/drop-shadow preferences and uses a solid dark background.'
+    Write-Host 'Also disables UI animation/drop-shadow preferences. Keeps the current theme, wallpaper and background/accent colors.'
     Write-Host 'Keeps existing pinned apps, fonts, drivers, game, power and Windows Update settings.'
     Write-Host 'Preview only: no preferences changed and no Explorer restart.'
-    Save-RaidUiOperationResult 'Preview' @() 'Chỉ xem trước; chưa đổi thiết lập giao diện.'
+    Save-RaidUiOperationResult 'Preview' @() 'Chỉ xem trước; giữ nguyên giao diện sáng/tối, hình nền và màu sắc hiện tại.'
     return
 }
 
@@ -232,17 +230,15 @@ function Invoke-RaidUiApply {
             Schema=1;UserSid=$userSid;ComputerName=$env:COMPUTERNAME;SavedAt=(Get-Date).ToString('o');Active=$true
             Registry=@($settings | ForEach-Object {Get-RaidRegistrySnapshot $_.Path $_.Name})
             Native=[pscustomobject]@{
-                UiEffects=[RaidVmUiNative]::GetFlag(0x103e)
-                ClientAnimation=[RaidVmUiNative]::GetFlag(0x1042)
-                DropShadow=[RaidVmUiNative]::GetFlag(0x1024)
-                MinAnimation=[RaidVmUiNative]::GetMinAnimation()
-                Wallpaper=[RaidVmUiNative]::GetWallpaper()
-                Background=[RaidVmUiNative]::GetBackground()
+                UiEffects=Get-RaidNativePreference 'UiEffects'
+                ClientAnimation=Get-RaidNativePreference 'ClientAnimation'
+                DropShadow=Get-RaidNativePreference 'DropShadow'
+                MinAnimation=Get-RaidNativePreference 'MinAnimation'
             }
         }
         Save-RaidUiBackup $saved
     }
-    $nativeTarget=[pscustomobject]@{UiEffects=$false;ClientAnimation=$false;DropShadow=$false;MinAnimation=$false;Wallpaper='';Background=0x181818}
+    $nativeTarget=[pscustomobject]@{UiEffects=$false;ClientAnimation=$false;DropShadow=$false;MinAnimation=$false}
     $results=@(Invoke-RaidUiChanges -Registry $settings -Native $nativeTarget)
     $saved | Add-Member -NotePropertyName LastApplyResults -NotePropertyValue $results -Force
     try { Save-RaidUiBackup $saved }
@@ -257,8 +253,8 @@ function Invoke-RaidUiApply {
         Write-Host 'Shortcut: Start-Process ms-settings:taskbar'
     }
     Write-Host ('Original preferences saved: '+$statePath)
-    Write-Host 'Fonts, pinned apps, installed apps, game drivers and Windows Update were not changed.'
-    $resultMessage='Đã kiểm tra '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập giao diện.'
+    Write-Host 'The current theme, wallpaper and background/accent colors were kept. Fonts, pinned apps, installed apps, game drivers and Windows Update were not changed.'
+    $resultMessage='Đã kiểm tra '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập. Giữ nguyên giao diện sáng/tối, hình nền và màu sắc hiện tại.'
     if(@($failed|Where-Object {$_.Name -like '*\TaskbarDa'}).Count){$resultMessage+=' Thời tiết bị Windows chặn: vào Settings > Personalization > Taskbar > Widgets để tắt.'}
     Save-RaidUiOperationResult 'Apply' $results $resultMessage
 }
@@ -284,6 +280,40 @@ function Invoke-RaidUiRestore {
     Save-RaidUiOperationResult 'Restore' $results ('Đã khôi phục '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập. Các mục lỗi vẫn giữ bản sao lưu để thử lại.')
 }
 
+function Invoke-RaidUiRestoreAppearance {
+    $saved=Read-RaidUiBackup
+    if (-not $saved -or -not $saved.Active -or $saved.AppearanceRestored) {
+        Write-Host 'No pending legacy wallpaper/background backup to restore.'
+        Save-RaidUiOperationResult 'RestoreAppearance' @() 'Không có hình nền/màu nền cũ đang chờ khôi phục từ bản công cụ trước.'
+        return
+    }
+    # Versions 1-3 changed these two preferences. Keep their Schema=1 backups
+    # restorable without undoing taskbar placement or performance preferences.
+    # Theme/accent values were never changed by those versions and are not read.
+    $appearanceRegistry=@($saved.Registry | Where-Object {
+        ($_.Path -eq 'Control Panel\Desktop' -and $_.Name -eq 'Wallpaper') -or
+        ($_.Path -eq 'Control Panel\Colors' -and $_.Name -eq 'Background')
+    })
+    $appearanceNative=[pscustomobject]@{}
+    foreach ($name in @('Wallpaper','Background')) {
+        $property=$saved.Native.PSObject.Properties[$name]
+        if ($null -ne $property) { $appearanceNative | Add-Member -NotePropertyName $name -NotePropertyValue $property.Value }
+    }
+    $results=@(Invoke-RaidUiChanges -Registry $appearanceRegistry -Native $appearanceNative)
+    $failed=@($results | Where-Object {-not $_.Success})
+    $saved | Add-Member -NotePropertyName LastAppearanceRestoreResults -NotePropertyValue $results -Force
+    $saved | Add-Member -NotePropertyName AppearanceRestored -NotePropertyValue ($failed.Count -eq 0) -Force
+    # Keep Active unchanged: taskbar/effect originals are still available to Restore.
+    try { Save-RaidUiBackup $saved }
+    catch { Write-Warning -Message ('Could not update appearance restore status. The previous backup is retained for retry. '+$_.Exception.Message) -WarningAction Continue }
+    if ($failed.Count) {
+        Write-Warning -Message ('Appearance restore incomplete: '+$failed.Count+' preference(s) failed. The original backup is retained for retry.') -WarningAction Continue
+    } else { Write-Host 'Legacy wallpaper/background restored. Taskbar and performance preferences were kept.' -ForegroundColor Green }
+    $message='Đã khôi phục '+($results.Count-$failed.Count)+'/'+$results.Count+' mục hình nền/màu nền từ bản cũ; giữ nguyên taskbar và thiết lập giảm hiệu ứng.'
+    if (-not $results.Count) { $message='Bản sao lưu này không chứa thay đổi hình nền/màu nền từ công cụ cũ; không có gì cần khôi phục.' }
+    Save-RaidUiOperationResult 'RestoreAppearance' $results $message
+}
+
 function Invoke-RaidActivationTool {
     Write-Host 'Opening the external MAS command requested by the user:' -ForegroundColor Cyan
     Write-Host 'irm https://get.activated.win | iex'
@@ -297,8 +327,9 @@ function Invoke-RaidActivationTool {
 
 if ($Action -eq 'Menu') {
     Write-Host ''
-    Write-Host 'RAID VM - Menu giao dien v3 (xu ly tung muc bi chan)' -ForegroundColor Cyan
+    Write-Host 'RAID VM - Menu giao dien v4 (giu nguyen theme va hinh nen)' -ForegroundColor Cyan
     Write-Host '4. Toi gian giao dien: Start ben trai, an thoi tiet/Search/Task View, giam hieu ung'
+    Write-Host '   Giu nguyen giao dien sang/toi, hinh nen va mau sac hien tai.'
     Write-Host '5. Khoi phuc giao dien da luu'
     Write-Host '6. Mo MAS: irm https://get.activated.win | iex (cong cu ben thu ba)'
     Write-Host '0. Thoat'
@@ -313,4 +344,5 @@ if ($Action -eq 'Menu') {
 }
 if ($Action -eq 'Apply') { Invoke-RaidUiApply }
 if ($Action -eq 'Restore') { Invoke-RaidUiRestore }
+if ($Action -eq 'RestoreAppearance') { Invoke-RaidUiRestoreAppearance }
 if ($Action -eq 'Activation') { Invoke-RaidActivationTool }
