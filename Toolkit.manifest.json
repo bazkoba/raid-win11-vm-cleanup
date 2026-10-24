@@ -1,14 +1,14 @@
 {
   "Schema": 1,
-  "Version": "1.0.2",
+  "Version": "1.1.0",
   "Files": [
     {
       "Name": "RAID-Toolkit.ps1",
-      "Sha256": "7ac30a5e2cb5f902bc0ed5e1e03d796381d1465bc7f159661c78e73142a9d8f4"
+      "Sha256": "a4a84f91ba6d16093cac35b61420e23cb7adf57f3e102a6fb860367f5894f573"
     },
     {
       "Name": "Invoke-RAID-Task.ps1",
-      "Sha256": "86c729d29f60c305fa65a3272b13adbfa9653aac0679241525b384746db7fa94"
+      "Sha256": "4d8dd23d13e83b78aaffab5dd4961f3556c259b73420165b2444165e36ef9a7d"
     },
     {
       "Name": "Install-RAID-Apps.ps1",
@@ -24,7 +24,11 @@
     },
     {
       "Name": "Optimize-RAID-UI.ps1",
-      "Sha256": "e57809f6c3390f1a24d9ddef38ff420c643797736062023e4c3956d231c80005"
+      "Sha256": "2a4bf8e27b075c0244a324a4ec9eab579c83289918c059caa5d0cbda65071f09"
+    },
+    {
+      "Name": "Optimize-RAID-Services.ps1",
+      "Sha256": "ba7ee2a9e38703180161933a5edab000fb42c005fe458081274c252caae5415e"
     }
   ]
 }
