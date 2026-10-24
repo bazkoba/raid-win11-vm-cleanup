@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 <#
 Install selected apps/runtimes in a Windows 11 x64 VM. Never removes apps.
-Downloads from official vendors and verifies every required installer before
-launching any installer. Existing matching installations are preserved.
+Downloads from official vendors and verifies each installer before launching it.
+A failed app does not block other verified apps. Existing installations are kept.
 WinRAR is a trial. This script does not provide a license or activate software.
 #>
 [CmdletBinding()]
@@ -13,6 +13,62 @@ param(
     [string]$ResultPath
 )
 $ErrorActionPreference='Stop'
+
+function Assert-RaidDownloadUri([string]$Uri) {
+    $parsed=$null
+    if(-not [uri]::TryCreate($Uri,[UriKind]::Absolute,[ref]$parsed) -or $parsed.Scheme -ne 'https' -or $parsed.UserInfo){throw 'Chỉ chấp nhận địa chỉ tải HTTPS không chứa tài khoản.'}
+    return $parsed.AbsoluteUri
+}
+
+function Wait-RaidDownloadRetry([int]$Seconds) { Start-Sleep -Seconds $Seconds }
+
+function Invoke-RaidCurlDownload([string]$Uri,[string]$Destination,[int]$TimeoutSeconds=180) {
+    $curl=Join-Path $env:SystemRoot 'System32\curl.exe'
+    if(-not (Test-Path -LiteralPath $curl -PathType Leaf)){throw 'Máy này chưa có curl.exe tích hợp để thử cách tải dự phòng.'}
+    $oldPreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
+    try {
+        # Schannel/curl still verifies the TLS certificate; no insecure flags.
+        $output=& $curl '--fail' '--location' '--proto' '=https' '--proto-redir' '=https' '--http1.1' '--tlsv1.2' '--connect-timeout' '20' '--max-time' ([string]$TimeoutSeconds) '--silent' '--show-error' '--output' $Destination $Uri 2>&1
+        $code=$LASTEXITCODE
+    } finally {$ErrorActionPreference=$oldPreference}
+    if($code -ne 0){throw ('curl trả mã '+$code+': '+($output -join ' '))}
+}
+
+function Invoke-RaidDownloadFile([string]$Uri,[string]$Destination,[int]$Attempts=3,[int]$TimeoutSeconds=120) {
+    $safeUri=Assert-RaidDownloadUri $Uri
+    if($Attempts -lt 1 -or $Attempts -gt 3){throw 'Số lần thử tải phải từ 1 đến 3.'}
+    $temporary=$Destination+'.'+[guid]::NewGuid().ToString('N')+'.partial'
+    $failures=New-Object 'System.Collections.Generic.List[string]'
+    [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    try {
+        for($attempt=1;$attempt -le $Attempts;$attempt++){
+            foreach($method in @('PowerShell','curl')){
+                Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+                Write-Host ('Tải lần '+$attempt+'/'+$Attempts+' ('+$method+'): '+$safeUri)
+                try {
+                    if($method -eq 'PowerShell'){Invoke-WebRequest -UseBasicParsing -Uri $safeUri -OutFile $temporary -TimeoutSec $TimeoutSeconds}
+                    else{Invoke-RaidCurlDownload $safeUri $temporary ([Math]::Max($TimeoutSeconds,180))}
+                    if(-not (Test-Path -LiteralPath $temporary -PathType Leaf) -or (Get-Item -LiteralPath $temporary).Length -eq 0){throw 'Máy chủ không trả về tệp có dữ liệu.'}
+                    Move-Item -LiteralPath $temporary -Destination $Destination -Force
+                    return
+                } catch {
+                    $detail=$method+' lần '+$attempt+': '+$_.Exception.GetBaseException().Message
+                    $failures.Add($detail);Write-Host $detail -ForegroundColor Yellow
+                }
+            }
+            if($attempt -lt $Attempts){Wait-RaidDownloadRetry ([Math]::Min(4,2*$attempt))}
+        }
+        throw ('Không tải được '+$safeUri+' sau '+$Attempts+' lần thử PowerShell/curl. Kiểm tra đường mạng, VPN hoặc proxy của máy ảo; nhật ký có lỗi từng lần tải. Các app khác vẫn được xử lý riêng.')
+    } finally {Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue}
+}
+
+function Get-RaidRemoteText([string]$Uri,[string]$Folder) {
+    $path=Join-Path $Folder ('metadata-'+[guid]::NewGuid().ToString('N')+'.txt')
+    try {
+        Invoke-RaidDownloadFile $Uri $path -TimeoutSeconds 60
+        return [IO.File]::ReadAllText($path,(New-Object Text.UTF8Encoding($false,$true)))
+    } finally {Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}
+}
 
 function Get-RaidInstalledApp([string]$App) {
     switch ($App) {
@@ -73,14 +129,14 @@ function Resolve-RaidInstaller([string]$App,[string]$Folder) {
             $publisher='(^|,\s*)O="?Google (LLC|Inc\.)"?(,|$)';$type='msi';$file='Chrome-x64.msi'
         }
         'WinRAR' {
-            $page=Invoke-WebRequest -UseBasicParsing -Uri 'https://www.rarlab.com/download.htm' -TimeoutSec 120
-            $match=[regex]::Match($page.Content,'href\s*=\s*["''](?<path>/rar/winrar-x64-\d+\.exe)["'']','IgnoreCase')
+            $page=Get-RaidRemoteText 'https://www.rarlab.com/download.htm' $Folder
+            $match=[regex]::Match($page,'href\s*=\s*["''](?<path>/rar/winrar-x64-\d+\.exe)["'']','IgnoreCase')
             if(-not $match.Success){throw 'Không tìm thấy bản WinRAR x64 ổn định trên trang RARLAB.'}
             $uri='https://www.rarlab.com'+$match.Groups['path'].Value
             $publisher='(^|,\s*)O="?(win\.rar|WinRAR) GmbH"?(,|$)';$file='WinRAR-x64.exe'
         }
         'DotNet8' {
-            $metadata=Invoke-RestMethod -Uri 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json' -TimeoutSec 120
+            $metadata=ConvertFrom-Json -InputObject (Get-RaidRemoteText 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json' $Folder)
             $release=@($metadata.releases | Where-Object {$_.'release-version' -match '^8\.0\.\d+$' -and $_.windowsdesktop.version -match '^8\.0\.\d+$'} | Sort-Object {[version]$_.windowsdesktop.version} -Descending | Select-Object -First 1)
             if($release.Count -ne 1){throw 'Không tìm thấy bản .NET Desktop Runtime 8 ổn định.'}
             $target=@($release[0].windowsdesktop.files | Where-Object {$_.rid -eq 'win-x64' -and $_.name -eq 'windowsdesktop-runtime-win-x64.exe'})
@@ -96,16 +152,51 @@ function Resolve-RaidInstaller([string]$App,[string]$Folder) {
     return [pscustomobject]@{App=$App;Uri=$uri;Path=(Join-Path $Folder $file);PublisherPattern=$publisher;Sha512=$sha512;Version=$version;Type=$type;LogPath=(Join-Path $Folder ($App+'-installer.log'))}
 }
 
-function Get-RaidVerifiedInstaller($Package) {
-    Write-Host ('Đang tải '+$Package.App+' từ '+$Package.Uri)
-    Invoke-WebRequest -UseBasicParsing -Uri $Package.Uri -OutFile $Package.Path -TimeoutSec 600
-    if($Package.Sha512 -and (Get-FileHash -LiteralPath $Package.Path -Algorithm SHA512).Hash -ine $Package.Sha512){throw ('SHA-512 không khớp: '+$Package.App)}
-    $signature=Get-AuthenticodeSignature -LiteralPath $Package.Path
+function Assert-RaidInstallerFile($Package,[string]$Path) {
+    if(-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -eq 0){throw ('Bộ cài trống hoặc không tồn tại: '+$Package.App)}
+    if($Package.Sha512 -and (Get-FileHash -LiteralPath $Path -Algorithm SHA512).Hash -ine $Package.Sha512){throw ('SHA-512 không khớp: '+$Package.App)}
+    $signature=Get-AuthenticodeSignature -LiteralPath $Path
     if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch $Package.PublisherPattern){throw ('Chữ ký hoặc nhà phát hành không hợp lệ: '+$Package.App)}
     Write-Host ('Đã xác minh nhà phát hành: '+$signature.SignerCertificate.Subject)
 }
 
+function Get-RaidInstallerCachePath($Package) {
+    $safeUri=Assert-RaidDownloadUri ([string]$Package.Uri)
+    $keyText=$Package.App+'|'+$safeUri+'|'+[string]$Package.Sha512+'|'+[string]$Package.PublisherPattern
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{$key=[BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($keyText))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+    $extension=if($Package.Type -eq 'msi'){'.msi'}else{'.exe'}
+    return Join-Path (Join-Path $env:ProgramData 'RaidVM-Toolkit\InstallerCache') ($key+$extension)
+}
+
+function Get-RaidVerifiedInstaller($Package) {
+    $cachePath=Get-RaidInstallerCachePath $Package
+    if(Test-Path -LiteralPath $cachePath -PathType Leaf){
+        try {
+            # Mutable vendor URLs have a short cache lifetime; hashes pin .NET.
+            if(-not $Package.Sha512 -and ((Get-Date)-(Get-Item -LiteralPath $cachePath).LastWriteTime).TotalHours -ge 24){throw 'Bộ cài lưu tạm đã quá 24 giờ.'}
+            Assert-RaidInstallerFile $Package $cachePath
+            Copy-Item -LiteralPath $cachePath -Destination $Package.Path -Force
+            Assert-RaidInstallerFile $Package $Package.Path
+            Write-Host ('Dùng bộ cài đã lưu và xác minh lại: '+$Package.App)
+            return
+        } catch {Write-Host ('Không dùng bộ cài lưu tạm của '+$Package.App+': '+$_.Exception.GetBaseException().Message) -ForegroundColor Yellow}
+    }
+    Write-Host ('Đang tải '+$Package.App+' từ '+$Package.Uri)
+    Invoke-RaidDownloadFile ([string]$Package.Uri) ([string]$Package.Path)
+    Assert-RaidInstallerFile $Package $Package.Path
+    $cacheTemporary=$cachePath+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $cachePath) -Force|Out-Null
+        Copy-Item -LiteralPath $Package.Path -Destination $cacheTemporary -Force
+        Assert-RaidInstallerFile $Package $cacheTemporary
+        Move-Item -LiteralPath $cacheTemporary -Destination $cachePath -Force
+    } catch {Write-Warning ('Không lưu được bộ cài tạm; bộ cài hiện tại vẫn đã được xác minh: '+$_.Exception.Message)}
+    finally {Remove-Item -LiteralPath $cacheTemporary -Force -ErrorAction SilentlyContinue}
+}
+
 function Invoke-RaidInstaller($Package) {
+    Assert-RaidInstallerFile $Package $Package.Path
     if($Package.Type -eq 'msi') {
         $exe=Join-Path $env:SystemRoot 'System32\msiexec.exe'
         $arguments='/i "'+$Package.Path+'" /qn /norestart /L*v "'+$Package.LogPath+'"'
@@ -154,10 +245,9 @@ function Invoke-RaidAppInstall([string[]]$AppIds,[switch]$Preview,[string]$Resul
                 $packages.Add($package)
             } catch {$result.Status='Failed';$result.Success=$false;$result.Message=$_.Exception.GetBaseException().Message}
         }
-        if(@($results|Where-Object {-not $_.Success}).Count) {
-            foreach($result in @($results|Where-Object Status -eq 'Pending')){$result.Status='NotRun';$result.Success=$false;$result.Message='Chưa cài: một bộ cài được chọn chưa vượt qua bước chuẩn bị/xác minh.'}
-        } else {
-            foreach($package in $packages) {
+        # Each package in this list independently passed preparation and checks.
+        # Failure of another app must not suppress these verified installations.
+        foreach($package in $packages) {
                 $result=$results|Where-Object App -eq $package.App|Select-Object -First 1
                 try {
                     Write-Host ('Đang cài '+$package.App+'...')
@@ -172,7 +262,6 @@ function Invoke-RaidAppInstall([string[]]$AppIds,[switch]$Preview,[string]$Resul
                     $result.Status='Installed';$result.Version=$after.Version;$result.RestartRequired=$code -eq 3010
                     $result.Message='Đã cài và kiểm tra lại thành công.'
                 } catch {$result.Status='Failed';$result.Success=$false;$result.Message=$_.Exception.GetBaseException().Message}
-            }
         }
     }
     $report.Results=@($results.ToArray())
