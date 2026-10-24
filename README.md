@@ -1,4 +1,4 @@
-﻿# RAID VM Toolkit — bảng điều khiển tiếng Việt
+# RAID VM Toolkit — bảng điều khiển tiếng Việt
 
 Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Legends qua Plarium Play**. Một lệnh mở toàn bộ công cụ; chọn chức năng bằng nút bấm, không phải nhớ từng lệnh riêng.
 
@@ -7,7 +7,7 @@ Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Lege
 Đóng cửa sổ RAID VM Toolkit cũ nếu đang mở, để lần chạy mới dùng đúng bộ công cụ vừa tải. Trong **máy ảo**, mở **Windows PowerShell**, bằng đúng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/dc5619f9291960c56f5382893371e0c87931cab3/Start-RAID-Toolkit.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/ea7220e667551b1b7563d302509cbc7716ca68e1/Start-RAID-Toolkit.ps1' | iex
 ```
 
 Không cần tải ZIP, Git, GitHub Desktop hoặc cài bộ SDK. Máy ảo cần Internet để tải công cụ và bộ cài được chọn. Lệnh chỉ mở bảng điều khiển, chưa tự cài, gỡ hay đổi thiết lập. Các tác vụ cần quản trị sẽ yêu cầu UAC; dùng đúng tài khoản Windows hiện tại.
@@ -15,6 +15,8 @@ Không cần tải ZIP, Git, GitHub Desktop hoặc cài bộ SDK. Máy ảo cầ
 **Bản sửa khởi chạy 1.0.1:** chỉ báo đã mở khi cửa sổ WinForms đã hiện và trả trạng thái sẵn sàng. Nếu cửa sổ lỗi, tiến trình thoát hoặc chờ quá 20 giây, PowerShell báo lỗi kèm đường dẫn nhật ký. Bản này cũng tránh bị phiên giao diện ẩn của bản cũ chặn lại.
 
 **Bản 1.0.2 sửa luồng cài phần mềm:** tải có thử lại và phương thức curl tích hợp của Windows; một app tải/xác minh lỗi không chặn các app khác đã xác minh. Nếu Chrome còn lỗi mạng, có thể bỏ chọn Chrome ở mục 2 để cài các mục còn lại. Mục Làm nhanh vẫn dừng trước khi dọn app nếu còn app được chọn chưa cài xong.
+
+**Bản 1.1.0:** giữ theme sáng/tối, hình nền và màu hiện tại; thêm tối ưu dịch vụ theo nhóm, xem trước, trạng thái từng dịch vụ và khôi phục cấu hình gốc. Có nút trả lại màu/nền nếu bản giao diện cũ từng đổi chúng. [Đối chiếu ba repo tham khảo](SERVICE-COMPARISON.md).
 
 Chỉ chạy trong máy ảo. Công cụ chặn tên máy thật đã biết trong phiên thiết lập này; đây không phải cơ chế nhận diện mọi máy thật.
 
@@ -25,10 +27,12 @@ Chỉ chạy trong máy ảo. Công cụ chặn tên máy thật đã biết tro
 | **1. Dọn app** | Xem trước hoặc gỡ danh sách app Windows tiêu dùng, Store/Xbox và thử gỡ OneDrive bằng bộ gỡ có chữ ký Microsoft. |
 | **2. Cài phần mềm** | Tích chọn Chrome, WinRAR x64, .NET Desktop Runtime 8 x64, Visual C++ v14 x86 và x64. Không chạy dọn app ở mục này. |
 | **3. Windows Update** | Đọc trạng thái, đặt chính sách chặn cập nhật tự động, hoặc khôi phục thiết lập đã sao lưu. |
-| **4. Tối giản giao diện** | Start/icon sang trái; ẩn Widgets/thời tiết, Search và Task View; giảm hiệu ứng, tắt trong suốt, nền tối trơn. |
+| **4. Tối giản giao diện** | Start/icon sang trái; ẩn Widgets/thời tiết, Search và Task View; giảm hiệu ứng, tắt trong suốt; **giữ theme, hình nền và màu hiện tại**. Có nút khôi phục riêng màu/nền từ bản sao lưu cũ. |
 | **5. Khôi phục giao diện** | Trả lại các thiết lập giao diện đã lưu. Không cài lại app đã gỡ. |
 | **6. Công cụ riêng** | Mở cửa sổ riêng chạy lệnh bên thứ ba đã được người dùng yêu cầu. |
-| **9. Làm nhanh** | Cài các mục đã chọn → dọn app → tối giản giao diện. Không ghép chặn Update hoặc công cụ riêng. |
+| **7. Tối ưu dịch vụ** | Chọn nhóm, xem trước, đọc trạng thái hoặc áp dụng. Mặc định Windows ít dùng + Xbox; bốn nhóm khác chọn riêng. |
+| **8. Khôi phục dịch vụ** | Trả lại cấu hình gốc của các mục đã theo dõi trên chính máy ảo này. |
+| **9. Làm nhanh** | Cài các mục đã chọn → dọn app → tối giản, giữ màu/nền → tối ưu dịch vụ cơ bản nếu tích ô. Không ghép chặn Update hoặc công cụ riêng. |
 
 Cửa sổ có tiến trình đang thực hiện, kết quả từng bước và nút **Mở nhật ký**. Tác vụ chạy trong tiến trình riêng để cửa sổ vẫn phản hồi. Khi đang chạy, các nút thực hiện bị khóa để tránh chạy trùng. Không tự khởi động lại máy ảo.
 
@@ -42,6 +46,27 @@ Cửa sổ có tiến trình đang thực hiện, kết quả từng bước và
 Script dọn giữ RAID/Plarium Play, Steam nếu có, driver, Guest Additions phục vụ chuột/copy-paste, DirectX, .NET, Visual C++, WebView2, App Installer, codec, Defender, Windows Update và thành phần lõi Windows. Không ép gỡ Edge hoặc xóa thư mục hệ thống. Không chủ động xóa thư mục dữ liệu OneDrive.
 
 Dọn app hoặc tắt hiệu ứng không bảo đảm tăng FPS hay sửa lỗi chuột/driver. Công cụ không tự đổi cấu hình VirtualBox và không cài RAID/Plarium Play.
+
+## Tối ưu dịch vụ và giữ giao diện sáng
+
+**Cách dùng cho Tuấn:** mở mục **7 → Xem trước thay đổi**, xem kết quả rồi bấm **Tối ưu nhóm đã chọn**. Cửa sổ ghi từng dịch vụ hiện có, không có, đã đúng, bỏ qua do phụ thuộc hoặc lỗi. Mục **8** khôi phục theo bản sao lưu, không dùng một bộ mặc định Windows chung.
+
+| Nhóm | Mặc định | Những tính năng chịu ảnh hưởng |
+| --- | --- | --- |
+| Windows ít dùng | Chọn | Fax, bản đồ tải về, Retail Demo, Remote Registry, chia sẻ thư viện Windows Media Player. |
+| Xbox | Chọn | Đăng nhập Xbox, lưu game Xbox trên cloud, phụ kiện và mạng Xbox; dành cho RAID qua Plarium, không dùng Game Pass. |
+| In ấn | Chưa chọn | Máy in và Microsoft Print to PDF. |
+| Chỉ mục tìm kiếm | Chưa chọn | Tắt Windows Search indexing; tìm file có thể chậm hơn. |
+| Thiết bị kết nối | Chưa chọn | Connected Devices và các instance per-user đang tồn tại; ảnh hưởng trải nghiệm liên thiết bị. |
+| Chẩn đoán từ xa | Chưa chọn | DiagTrack và dịch vụ WAP Push nếu có. |
+
+Danh sách chính xác nằm trong `Optimize-RAID-Services.ps1`. Công cụ chỉ thay đổi các tên trong danh sách cho phép; không tắt hàng loạt dịch vụ Microsoft. Không sửa driver, dịch vụ mạng/VPN/proxy, âm thanh, bảo mật, Windows Update/BITS, trình cài hoặc Guest Additions/Vektor phục vụ chuột và clipboard. Không ép dừng dịch vụ phụ thuộc; dịch vụ liên quan đang chạy ngoài nhóm mục tiêu khiến mục đó bị bỏ qua. Không sửa quyền dịch vụ, trigger hoặc file thực thi.
+
+Trước thay đổi, công cụ lưu cấu hình gốc và nhật ký thao tác đang chờ khôi phục vào tệp nguyên tử. Bản sao lưu gồm startup, sự tồn tại/kiểu/giá trị delayed start và trạng thái chạy/dừng; chạy lại không ghi đè bản gốc. Sau thao tác có đọc lại để xác minh. Khôi phục lỗi một phần sẽ giữ các mục còn chờ để thử lại. Bản sao lưu gắn với máy và không dùng để áp dụng sang một VM khác. Nếu dịch vụ/app đã bị gỡ hoặc Windows bảo vệ cấu hình, công cụ báo lỗi thay vì ép sửa.
+
+Mục **4** chỉ đổi taskbar và hiệu ứng; **không đổi theme sáng, hình nền, màu nền hay màu nhấn**. Nếu bản cũ từng đưa nền thành đen, dùng **Khôi phục màu/nền cũ** trong mục 4; taskbar vẫn giữ bên trái và các hiệu ứng vẫn được tối giản. Mục 5 khôi phục toàn bộ phần giao diện đã lưu. Nếu không có bản sao lưu cũ thì không thể suy ra hình nền trước đó.
+
+Không phải dịch vụ tồn tại nào cũng đang dùng CPU/RAM; nhiều dịch vụ chạy theo yêu cầu. Tắt thêm dịch vụ không bảo đảm sửa độ trễ chuột, tăng FPS hay giải phóng nhiều RAM. [Bản đối chiếu mã nguồn và phạm vi thiết kế](SERVICE-COMPARISON.md).
 
 ## Cài phần mềm và thư viện
 
@@ -84,6 +109,7 @@ Chỉ khi chủ động chọn mục 6 và xác nhận, công cụ mở cửa s�
 | Yêu cầu, kết quả JSON và log từng lần chạy | `%LOCALAPPDATA%\RaidVM-Toolkit\Runs\<ngày-giờ-mã>` |
 | Trạng thái và lỗi khởi chạy cửa sổ | `%LOCALAPPDATA%\RaidVM-Toolkit\Launches\<ngày-giờ-mã>` |
 | Sao lưu giao diện | `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json` |
+| Sao lưu cấu hình dịch vụ | `C:\ProgramData\RaidVM-Toolkit\Services\before.json` |
 | Sao lưu chính sách Update | `C:\ProgramData\RaidVM-Toolkit\Update\before.json` |
 | Bộ cài/nhật ký cài phần mềm | `C:\ProgramData\RaidVM-Toolkit\Install\<ngày-giờ-mã>` |
 | Bộ cài lưu tạm có xác minh | `C:\ProgramData\RaidVM-Toolkit\InstallerCache` |
@@ -97,15 +123,18 @@ Bản sao lưu giao diện từ menu cũ vẫn dùng được. Khi khôi phục 
 
 Đã tải thực tế bộ cài Chrome từ Google bằng curl của Windows trên host và xác minh chữ ký Google hợp lệ; chưa chạy bộ cài đó. Kiểm thử mô phỏng thêm lỗi Chrome mất mạng trong khi WinRAR/.NET vẫn được cài, tải thử lại/curl dự phòng và cache bị hỏng/quá hạn. Lỗi đầy đủ được giữ ở tệp `<tác vụ>.error-details.txt`; trạng thái chính hiển thị thông báo ngắn hơn.
 
-**Chưa chạy toàn bộ cài/gỡ/chặn cập nhật trong máy ảo kiểm thử**, chưa chứng minh tăng hiệu năng hoặc tương thích mọi bản Windows/game. Ảnh xem thử giao diện không phải bằng chứng đã tối ưu máy ảo.
+Bản 1.1.0 bổ sung kiểm thử mô phỏng service dependency, backup trước thay đổi, chạy lại, lỗi một phần và khôi phục; kiểm tra giữ màu/nền và tương thích bản sao lưu giao diện cũ. Xem thử giao diện mới được vẽ ngoài màn hình, không kích hoạt cửa sổ hoặc điều khiển chuột.
+
+**Chưa chạy toàn bộ cài/gỡ/chặn cập nhật/tối ưu dịch vụ trong máy ảo kiểm thử**, chưa chứng minh tăng hiệu năng hoặc tương thích mọi bản Windows/game. Ảnh xem thử giao diện không phải bằng chứng đã tối ưu máy ảo.
 
 ## Các tệp trong repo
 
 - `Start-RAID-Toolkit.ps1`: một điểm khởi chạy; tải bản cố định và kiểm tra mã băm trước khi mở cửa sổ.
-- `Toolkit.manifest.json`: danh sách sáu module và SHA-256 văn bản đã chuẩn hóa.
+- `Toolkit.manifest.json`: danh sách bảy module và SHA-256 văn bản đã chuẩn hóa.
 - `RAID-Toolkit.ps1`: cửa sổ WinForms tiếng Việt.
 - `Invoke-RAID-Task.ps1`: tác vụ nền, kiểm tra tài khoản/quyền và ghi kết quả.
-- `Install-RAID-Apps.ps1`, `Debloat-Win11-RAID.ps1`, `Manage-RAID-Update.ps1`, `Optimize-RAID-UI.ps1`: các chức năng độc lập.
+- `Install-RAID-Apps.ps1`, `Debloat-Win11-RAID.ps1`, `Manage-RAID-Update.ps1`, `Optimize-RAID-UI.ps1`, `Optimize-RAID-Services.ps1`: các chức năng độc lập.
+- `SERVICE-COMPARISON.md`: đối chiếu nguồn tham khảo, các nhóm dịch vụ và giới hạn.
 - `Setup-RAID-VM.ps1`: lệnh cũ cài Chrome/WinRAR rồi dọn, giữ để tương thích. Bảng điều khiển mới không gọi luồng gộp này.
 
 Mã băm giúp kiểm tra bản tải có đúng bộ tệp đã cố định; đây không phải chữ ký số Microsoft cho script của repo. Lệnh khởi chạy tải và thực thi mã từ repo này.
