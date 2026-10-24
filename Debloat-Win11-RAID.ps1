@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -RunAsAdministrator
 <#
 Run INSIDE the Windows 11 gaming VM, using Windows PowerShell as administrator.
@@ -10,7 +10,7 @@ Use -Preview to list the proposed removals without uninstalling anything.
 App removal also removes that app's local data. A VM snapshot is recommended.
 #>
 [CmdletBinding()]
-param([switch]$Preview)
+param([switch]$Preview,[string]$ResultPath)
 
 $ErrorActionPreference = 'Stop'
 if ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09') {
@@ -86,6 +86,10 @@ if ($Preview) {
     $toDeprovision | Select-Object DisplayName,PackageName | Format-Table -AutoSize
     Write-Host 'OneDrive will also be uninstalled if a signed setup program is available.'
     Write-Host 'Preview only: no apps were removed.' -ForegroundColor Green
+    if ($ResultPath) {
+        [pscustomobject]@{Success=$true;Partial=$false;Message=('Chỉ xem trước: '+$toRemove.Count+' gói app hiện có và '+$toDeprovision.Count+' gói dự phòng; chưa gỡ app.');Results=@($toRemove|Select-Object Name,PackageFullName);RebootRequired=$false} |
+            ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ResultPath -Encoding UTF8
+    }
     return
 }
 
@@ -154,3 +158,8 @@ Write-Host 'Cleanup finished. Protected apps or packages with uninstall errors m
 Write-Host ('Logs: ' + $logFolder)
 Write-Host 'Your RAID/Plarium installation, game runtimes, drivers and Guest Additions were preserved.'
 Write-Host 'No automatic restart was performed. Run this once per new Windows VM; repeat only if needed after an update.'
+if ($ResultPath) {
+    $failed=@($results | Where-Object {$_.Status -in @('NotRemoved','CheckExitCode')})
+    [pscustomobject]@{Success=($failed.Count -eq 0);Partial=($failed.Count -gt 0 -and $failed.Count -lt $results.Count);Message=('Đã xử lý danh sách app; có '+$failed.Count+' thao tác cần kiểm tra. Xem nhật ký để biết app còn lại.');Results=@($results.ToArray());LogFolder=$logFolder;RebootRequired=$false} |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ResultPath -Encoding UTF8
+}
