@@ -1,199 +1,316 @@
 ﻿#Requires -Version 5.1
 <#
-Install selected apps/runtimes in a Windows 11 x64 VM. Never removes apps.
-Downloads from official vendors and verifies every required installer before
-launching any installer. Existing matching installations are preserved.
-WinRAR is a trial. This script does not provide a license or activate software.
+Windows 11 VM desktop preferences; optional external MAS command requested by user.
+Menu: 4 minimal desktop; 5 restore desktop; 6 open external MAS; 0 exit.
+Version 3: verify each preference; continue when a protected preference is denied.
+Options 4/5 do not remove/install apps or change Windows Update.
+Applies to the currently signed-in desktop user and restarts that user's Explorer.
+File Explorer windows may close; finish any file copies before applying/restoring.
 #>
 [CmdletBinding()]
-param(
-    [ValidateSet('Chrome','WinRAR','DotNet8','VCx86','VCx64')]
-    [string[]]$Apps=@('Chrome','WinRAR','DotNet8','VCx86','VCx64'),
-    [switch]$Preview,
-    [string]$ResultPath
-)
+param([ValidateSet('Menu','Apply','Restore','Preview','Activation')][string]$Action='Menu',[string]$ResultPath)
+
 $ErrorActionPreference='Stop'
+if ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Action -ne 'Preview') {
+    throw 'This is the known real host PC. Run this UI command inside a Windows 11 VM.'
+}
+if ([Environment]::OSVersion.Version.Build -lt 22000) { throw 'Windows 11 is required.' }
 
-function Get-RaidInstalledApp([string]$App) {
-    switch ($App) {
-        'Chrome' {
-            $paths=@(
-                (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe')
-                (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe')
-                (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe')
-            )
-            $file=$paths | Where-Object {Test-Path -LiteralPath $_ -PathType Leaf} | Select-Object -First 1
-            $version=if($file){(Get-Item -LiteralPath $file).VersionInfo.ProductVersion}else{$null}
-            return [pscustomobject]@{Present=[bool]$file;Version=$version}
+function Get-RaidRegistrySnapshot([string]$Path,[string]$Name) {
+    $key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($Path,$false)
+    try {
+        $exists=$null -ne $key -and @($key.GetValueNames()) -contains $Name
+        $kind=$null; $value=$null
+        if ($exists) {
+            $kind=$key.GetValueKind($Name).ToString()
+            $value=$key.GetValue($Name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
         }
-        'WinRAR' {
-            $file=@((Join-Path $env:ProgramFiles 'WinRAR\WinRAR.exe'),(Join-Path ${env:ProgramFiles(x86)} 'WinRAR\WinRAR.exe')) | Where-Object {Test-Path -LiteralPath $_ -PathType Leaf} | Select-Object -First 1
-            $version=if($file){(Get-Item -LiteralPath $file).VersionInfo.ProductVersion}else{$null}
-            return [pscustomobject]@{Present=[bool]$file;Version=$version}
+        return [pscustomobject]@{Path=$Path;Name=$Name;Exists=$exists;Kind=$kind;Value=$value}
+    } finally { if ($key) { $key.Dispose() } }
+}
+function Test-RaidValueEqual($Left,$Right) {
+    return (ConvertTo-Json -InputObject $Left -Depth 8 -Compress) -ceq (ConvertTo-Json -InputObject $Right -Depth 8 -Compress)
+}
+function Save-RaidUiOperationResult([string]$Operation,[object[]]$Results,[string]$Message) {
+    if (-not $ResultPath) { return }
+    $failed=@($Results | Where-Object {-not $_.Success})
+    [pscustomobject]@{Action=$Operation;Success=($failed.Count -eq 0);Partial=($failed.Count -gt 0 -and $failed.Count -lt $Results.Count);Message=$Message;Results=@($Results);RebootRequired=$false;BackupPath=$statePath} |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ResultPath -Encoding UTF8
+}
+function Test-RaidRegistrySnapshotEqual($Left,$Right) {
+    if ([bool]$Left.Exists -ne [bool]$Right.Exists) { return $false }
+    if (-not $Left.Exists) { return $true }
+    return $Left.Kind -eq $Right.Kind -and (Test-RaidValueEqual $Left.Value $Right.Value)
+}
+function Set-RaidRegistrySnapshot($Entry) {
+    $before=Get-RaidRegistrySnapshot $Entry.Path $Entry.Name
+    # A protected value that already matches needs no write, including during restore.
+    if (Test-RaidRegistrySnapshotEqual $before $Entry) { return }
+    if (-not $Entry.Exists) {
+        $key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey([string]$Entry.Path,$true)
+        try { if ($key) { $key.DeleteValue([string]$Entry.Name,$false) } }
+        finally { if ($key) { $key.Dispose() } }
+        return
+    }
+    $key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey([string]$Entry.Path,$true)
+    try {
+        $kind=[Enum]::Parse([Microsoft.Win32.RegistryValueKind],[string]$Entry.Kind)
+        $value=$Entry.Value
+        switch ([string]$Entry.Kind) {
+            'DWord' {$value=[int]$value}
+            'QWord' {$value=[long]$value}
+            'Binary' {$value=[byte[]]$value}
+            'MultiString' {$value=[string[]]$value}
+            'String' {$value=[string]$value}
+            'ExpandString' {$value=[string]$value}
+            default {throw ('Unsupported registry kind: '+$Entry.Kind)}
         }
-        'DotNet8' {
-            $desktop=Join-Path $env:ProgramFiles 'dotnet\shared\Microsoft.WindowsDesktop.App'
-            $versions=@(Get-ChildItem -LiteralPath $desktop -Directory -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -match '^8\.0\.\d+$' -and
-                (Test-Path -LiteralPath (Join-Path $_.FullName 'System.Windows.Forms.dll') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $_.FullName 'PresentationFramework.dll') -PathType Leaf) -and
-                (Test-Path -LiteralPath (Join-Path $env:ProgramFiles ('dotnet\shared\Microsoft.NETCore.App\'+$_.Name+'\coreclr.dll')) -PathType Leaf)
-            } | Sort-Object {[version]$_.Name} -Descending)
-            $version=if($versions.Count){$versions[0].Name}else{$null}
-            return [pscustomobject]@{Present=$versions.Count -gt 0;Version=$version}
-        }
-        {$_ -in @('VCx86','VCx64')} {
-            $arch=if($App -eq 'VCx86'){'x86'}else{'x64'}
-            foreach($view in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)) {
-                $base=$null;$key=$null
-                try {
-                    $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,$view)
-                    $key=$base.OpenSubKey(('SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\'+$arch),$false)
-                    if($key -and [int]$key.GetValue('Installed',0) -eq 1) {
-                        $version=[string]$key.GetValue('Version','')
-                        $parsed=$null
-                        if([version]::TryParse($version.TrimStart('v','V'),[ref]$parsed) -and $parsed.Major -eq 14) {
-                            return [pscustomobject]@{Present=$true;Version=$version}
-                        }
-                    }
-                } finally {if($key){$key.Dispose()};if($base){$base.Dispose()}}
-            }
-            return [pscustomobject]@{Present=$false;Version=$null}
-        }
-        default {throw ('Unsupported app: '+$App)}
+        $key.SetValue([string]$Entry.Name,$value,$kind)
+    } finally { if ($key) { $key.Dispose() } }
+}
+
+function Get-RaidNativePreference([string]$Name) {
+    switch ($Name) {
+        'UiEffects' { return [RaidVmUiNative]::GetFlag(0x103e) }
+        'ClientAnimation' { return [RaidVmUiNative]::GetFlag(0x1042) }
+        'DropShadow' { return [RaidVmUiNative]::GetFlag(0x1024) }
+        'MinAnimation' { return [RaidVmUiNative]::GetMinAnimation() }
+        'Wallpaper' { return [RaidVmUiNative]::GetWallpaper() }
+        'Background' { return [RaidVmUiNative]::GetBackground() }
+        default { throw ('Unknown native preference: '+$Name) }
     }
 }
-
-function Resolve-RaidInstaller([string]$App,[string]$Folder) {
-    $publisher='(^|,\s*)O="?Microsoft Corporation"?(,|$)'
-    $sha512=$null;$version=$null;$type='exe'
-    switch ($App) {
-        'Chrome' {
-            $uri='https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi'
-            $publisher='(^|,\s*)O="?Google (LLC|Inc\.)"?(,|$)';$type='msi';$file='Chrome-x64.msi'
-        }
-        'WinRAR' {
-            $page=Invoke-WebRequest -UseBasicParsing -Uri 'https://www.rarlab.com/download.htm' -TimeoutSec 120
-            $match=[regex]::Match($page.Content,'href\s*=\s*["''](?<path>/rar/winrar-x64-\d+\.exe)["'']','IgnoreCase')
-            if(-not $match.Success){throw 'Không tìm thấy bản WinRAR x64 ổn định trên trang RARLAB.'}
-            $uri='https://www.rarlab.com'+$match.Groups['path'].Value
-            $publisher='(^|,\s*)O="?(win\.rar|WinRAR) GmbH"?(,|$)';$file='WinRAR-x64.exe'
-        }
-        'DotNet8' {
-            $metadata=Invoke-RestMethod -Uri 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json' -TimeoutSec 120
-            $release=@($metadata.releases | Where-Object {$_.'release-version' -match '^8\.0\.\d+$' -and $_.windowsdesktop.version -match '^8\.0\.\d+$'} | Sort-Object {[version]$_.windowsdesktop.version} -Descending | Select-Object -First 1)
-            if($release.Count -ne 1){throw 'Không tìm thấy bản .NET Desktop Runtime 8 ổn định.'}
-            $target=@($release[0].windowsdesktop.files | Where-Object {$_.rid -eq 'win-x64' -and $_.name -eq 'windowsdesktop-runtime-win-x64.exe'})
-            if($target.Count -ne 1 -or $target[0].hash -notmatch '^[0-9a-fA-F]{128}$'){throw 'Metadata .NET Desktop Runtime không hợp lệ.'}
-            $url=[uri]$target[0].url
-            if($url.Scheme -ne 'https' -or $url.Host -notin @('builds.dotnet.microsoft.com','download.visualstudio.microsoft.com')){throw 'Địa chỉ bộ cài .NET không thuộc máy chủ Microsoft được phép.'}
-            $uri=$url.AbsoluteUri;$sha512=[string]$target[0].hash;$version=[string]$release[0].windowsdesktop.version;$file='WindowsDesktop-Runtime8-x64.exe'
-        }
-        'VCx86' {$uri='https://aka.ms/vc14/vc_redist.x86.exe';$file='VC-redist-x86.exe'}
-        'VCx64' {$uri='https://aka.ms/vc14/vc_redist.x64.exe';$file='VC-redist-x64.exe'}
-        default {throw ('Unsupported app: '+$App)}
+function Set-RaidNativePreference([string]$Name,$Value) {
+    switch ($Name) {
+        'UiEffects' { [RaidVmUiNative]::SetFlag(0x103f,[bool]$Value) }
+        'ClientAnimation' { [RaidVmUiNative]::SetFlag(0x1043,[bool]$Value) }
+        'DropShadow' { [RaidVmUiNative]::SetFlag(0x1025,[bool]$Value) }
+        'MinAnimation' { [RaidVmUiNative]::SetMinAnimation([bool]$Value) }
+        'Wallpaper' { [RaidVmUiNative]::SetWallpaper([string]$Value) }
+        'Background' { [RaidVmUiNative]::SetBackground([int]$Value) }
+        default { throw ('Unknown native preference: '+$Name) }
     }
-    return [pscustomobject]@{App=$App;Uri=$uri;Path=(Join-Path $Folder $file);PublisherPattern=$publisher;Sha512=$sha512;Version=$version;Type=$type;LogPath=(Join-Path $Folder ($App+'-installer.log'))}
 }
-
-function Get-RaidVerifiedInstaller($Package) {
-    Write-Host ('Đang tải '+$Package.App+' từ '+$Package.Uri)
-    Invoke-WebRequest -UseBasicParsing -Uri $Package.Uri -OutFile $Package.Path -TimeoutSec 600
-    if($Package.Sha512 -and (Get-FileHash -LiteralPath $Package.Path -Algorithm SHA512).Hash -ine $Package.Sha512){throw ('SHA-512 không khớp: '+$Package.App)}
-    $signature=Get-AuthenticodeSignature -LiteralPath $Package.Path
-    if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch $Package.PublisherPattern){throw ('Chữ ký hoặc nhà phát hành không hợp lệ: '+$Package.App)}
-    Write-Host ('Đã xác minh nhà phát hành: '+$signature.SignerCertificate.Subject)
-}
-
-function Invoke-RaidInstaller($Package) {
-    if($Package.Type -eq 'msi') {
-        $exe=Join-Path $env:SystemRoot 'System32\msiexec.exe'
-        $arguments='/i "'+$Package.Path+'" /qn /norestart /L*v "'+$Package.LogPath+'"'
-    } elseif($Package.App -eq 'WinRAR') {$exe=$Package.Path;$arguments='/S'}
-    else {$exe=$Package.Path;$arguments='/install /quiet /norestart /log "'+$Package.LogPath+'"'}
-    $process=Start-Process -FilePath $exe -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
-    return [int]$process.ExitCode
-}
-
-function Save-RaidInstallResult($Report,[string]$Path) {
-    if(-not $Path){return}
-    $fullPath=[IO.Path]::GetFullPath($Path)
-    $parent=Split-Path -Parent $fullPath
-    if(-not (Test-Path -LiteralPath $parent)){New-Item -ItemType Directory -Path $parent -Force|Out-Null}
-    $json=ConvertTo-Json -InputObject $Report -Depth 8
-    [IO.File]::WriteAllText($fullPath,$json,(New-Object Text.UTF8Encoding($true)))
-}
-
-function Invoke-RaidAppInstall([string[]]$AppIds,[switch]$Preview,[string]$ResultPath) {
-    $selected=@($AppIds | Select-Object -Unique)
-    if(-not $selected.Count){throw 'Chưa chọn phần mềm để cài.'}
-    foreach($app in $selected){if($app -notin @('Chrome','WinRAR','DotNet8','VCx86','VCx64')){throw ('Unsupported app: '+$app)}}
-    $results=New-Object System.Collections.Generic.List[object]
-    $packages=New-Object System.Collections.Generic.List[object]
-    $report=[pscustomobject]@{Schema=1;Action='Install';Preview=[bool]$Preview;Success=$true;Partial=$false;Message='';RestartRequired=$false;LogFolder=$null;Results=@()}
-    foreach($app in $selected) {
+function Invoke-RaidUiChanges([object[]]$Registry,$Native) {
+    foreach ($entry in $Registry) {
+        $label='HKCU\'+$entry.Path+'\'+$entry.Name
         try {
-            $present=Get-RaidInstalledApp $app
-            $status=if($present.Present){'Present'}elseif($Preview){'Planned'}else{'Pending'}
-            $message=if($present.Present){'Đã có; giữ nguyên bản đang cài.'}elseif($Preview){'Sẽ tải bộ cài chính hãng, xác minh và cài đặt.'}else{'Đang chuẩn bị bộ cài.'}
-            $results.Add([pscustomobject]@{App=$app;Status=$status;Success=$true;Version=$present.Version;ExitCode=$null;RestartRequired=$false;Message=$message})
-            Write-Host ($app+': '+$message)
+            Set-RaidRegistrySnapshot $entry
+            $actual=Get-RaidRegistrySnapshot $entry.Path $entry.Name
+            if (-not (Test-RaidRegistrySnapshotEqual $actual $entry)) { throw 'Read-back verification did not match the requested registry value.' }
+            Write-Host ('[OK] '+$label)
+            [pscustomobject]@{Name=$label;Success=$true;Error=$null}
         } catch {
-            $results.Add([pscustomobject]@{App=$app;Status='Failed';Success=$false;Version=$null;ExitCode=$null;RestartRequired=$false;Message=$_.Exception.GetBaseException().Message})
+            $cause=$_.Exception.GetBaseException()
+            $detail=$cause.GetType().Name+': '+$cause.Message+' (HRESULT '+$cause.HResult+')'
+            Write-Warning -Message ('[FAILED] '+$label+' -- '+$detail) -WarningAction Continue
+            [pscustomobject]@{Name=$label;Success=$false;Error=$detail}
         }
     }
-    if(-not $Preview -and @($results|Where-Object Status -eq 'Pending').Count) {
-        $folder=Join-Path $env:ProgramData ('RaidVM-Toolkit\Install\'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8))
-        New-Item -ItemType Directory -Path $folder -Force|Out-Null
-        $report.LogFolder=$folder
-        [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        foreach($result in @($results|Where-Object Status -eq 'Pending')) {
-            try {
-                $package=Resolve-RaidInstaller $result.App $folder
-                Get-RaidVerifiedInstaller $package
-                $packages.Add($package)
-            } catch {$result.Status='Failed';$result.Success=$false;$result.Message=$_.Exception.GetBaseException().Message}
-        }
-        if(@($results|Where-Object {-not $_.Success}).Count) {
-            foreach($result in @($results|Where-Object Status -eq 'Pending')){$result.Status='NotRun';$result.Success=$false;$result.Message='Chưa cài: một bộ cài được chọn chưa vượt qua bước chuẩn bị/xác minh.'}
-        } else {
-            foreach($package in $packages) {
-                $result=$results|Where-Object App -eq $package.App|Select-Object -First 1
-                try {
-                    Write-Host ('Đang cài '+$package.App+'...')
-                    $code=Invoke-RaidInstaller $package
-                    $result.ExitCode=$code
-                    $accepted=@(0,3010)
-                    if($package.App -in @('VCx86','VCx64')){$accepted+=1638}
-                    if($code -notin $accepted){throw ('Bộ cài trả mã lỗi '+$code+'. Xem nhật ký: '+$package.LogPath)}
-                    $after=Get-RaidInstalledApp $package.App
-                    if(-not $after.Present){throw ('Chưa xác nhận được '+$package.App+' sau khi cài. Xem nhật ký: '+$package.LogPath)}
-                    if($package.Version -and [version]$after.Version -lt [version]$package.Version){throw 'Bản runtime đọc lại cũ hơn bản vừa yêu cầu cài.'}
-                    $result.Status='Installed';$result.Version=$after.Version;$result.RestartRequired=$code -eq 3010
-                    $result.Message='Đã cài và kiểm tra lại thành công.'
-                } catch {$result.Status='Failed';$result.Success=$false;$result.Message=$_.Exception.GetBaseException().Message}
-            }
+    foreach ($property in $Native.PSObject.Properties) {
+        $label='Desktop API: '+$property.Name
+        try {
+            $actual=Get-RaidNativePreference $property.Name
+            if (-not (Test-RaidValueEqual $actual $property.Value)) { Set-RaidNativePreference $property.Name $property.Value }
+            $actual=Get-RaidNativePreference $property.Name
+            if (-not (Test-RaidValueEqual $actual $property.Value)) { throw 'Read-back verification did not match the requested desktop preference.' }
+            Write-Host ('[OK] '+$label)
+            [pscustomobject]@{Name=$label;Success=$true;Error=$null}
+        } catch {
+            $cause=$_.Exception.GetBaseException()
+            $detail=$cause.GetType().Name+': '+$cause.Message+' (HRESULT '+$cause.HResult+')'
+            Write-Warning -Message ('[FAILED] '+$label+' -- '+$detail) -WarningAction Continue
+            [pscustomobject]@{Name=$label;Success=$false;Error=$detail}
         }
     }
-    $report.Results=@($results.ToArray())
-    $report.Success=@($results|Where-Object {-not $_.Success}).Count -eq 0
-    $report.Partial=-not $report.Success -and @($results|Where-Object {$_.Success}).Count -gt 0
-    $report.Message=if($Preview){'Đã xem trước các phần mềm đã chọn; chưa tải hoặc cài bộ cài.'}elseif($report.Success){'Các phần mềm đã chọn đã có hoặc đã cài và kiểm tra thành công.'}else{'Một số phần mềm chưa hoàn tất. Xem kết quả từng mục và nhật ký.'}
-    $report.RestartRequired=@($results|Where-Object RestartRequired).Count -gt 0
-    Save-RaidInstallResult $report $ResultPath
-    if(-not $report.Success){
-        $failedMessages=@($results|Where-Object {-not $_.Success}|ForEach-Object {$_.App+': '+$_.Message})
-        throw ('Một số mục chưa hoàn tất. '+($failedMessages -join '; '))
-    }
-    return $report
 }
 
-if(-not $Preview) {
-    if($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09'){throw 'This is the known real host PC. Run this installer inside the Windows VM.'}
-    $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal=New-Object Security.Principal.WindowsPrincipal($identity)
-    if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator privileges are required for installation.'}
-    if(-not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64'){throw 'Windows x64 and 64-bit Windows PowerShell are required.'}
-    if([Environment]::OSVersion.Version.Build -lt 22000){throw 'Windows 11 is required.'}
+$advanced='Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+$settings=@(
+    [pscustomobject]@{Path=$advanced;Name='TaskbarAl';Kind='DWord';Value=0;Exists=$true}
+    [pscustomobject]@{Path=$advanced;Name='TaskbarDa';Kind='DWord';Value=0;Exists=$true}
+    [pscustomobject]@{Path=$advanced;Name='ShowTaskViewButton';Kind='DWord';Value=0;Exists=$true}
+    [pscustomobject]@{Path='Software\Microsoft\Windows\CurrentVersion\Search';Name='SearchboxTaskbarMode';Kind='DWord';Value=0;Exists=$true}
+    [pscustomobject]@{Path='Software\Microsoft\Windows\CurrentVersion\Themes\Personalize';Name='EnableTransparency';Kind='DWord';Value=0;Exists=$true}
+    [pscustomobject]@{Path='Control Panel\Colors';Name='Background';Kind='String';Value='24 24 24';Exists=$true}
+    [pscustomobject]@{Path='Control Panel\Desktop';Name='Wallpaper';Kind='String';Value='';Exists=$true}
+)
+
+if ($Action -eq 'Preview') {
+    $settings | Select-Object Name,Value | Format-Table -AutoSize
+    Write-Host 'Also disables UI animation/drop-shadow preferences and uses a solid dark background.'
+    Write-Host 'Keeps existing pinned apps, fonts, drivers, game, power and Windows Update settings.'
+    Write-Host 'Preview only: no preferences changed and no Explorer restart.'
+    Save-RaidUiOperationResult 'Preview' @() 'Chỉ xem trước; chưa đổi thiết lập giao diện.'
+    return
 }
-Invoke-RaidAppInstall -AppIds $Apps -Preview:$Preview -ResultPath $ResultPath
+
+if (-not ('RaidVmUiNative' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class RaidVmUiNative {
+    [StructLayout(LayoutKind.Sequential)] private struct ANIMATIONINFO { public uint cbSize; public int iMinAnimate; }
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW", SetLastError=true)] private static extern bool Spi(uint action,uint param,IntPtr value,uint flags);
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool SpiText(uint action,uint param,string value,uint flags);
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool SpiReadText(uint action,uint param,StringBuilder value,uint flags);
+    [DllImport("user32.dll", EntryPoint="SystemParametersInfoW", SetLastError=true)] private static extern bool SpiAnimation(uint action,uint param,ref ANIMATIONINFO value,uint flags);
+    [DllImport("user32.dll")] private static extern uint GetSysColor(int index);
+    [DllImport("user32.dll", SetLastError=true)] private static extern bool SetSysColors(int count,int[] indexes,int[] colors);
+    [DllImport("user32.dll")] public static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern IntPtr SendMessageTimeout(IntPtr window,uint msg,UIntPtr wParam,string lParam,uint flags,uint timeout,out UIntPtr result);
+    private static void Check(bool ok) { if(!ok) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+    public static bool GetFlag(uint action) {
+        IntPtr ptr=Marshal.AllocHGlobal(4);
+        try { Marshal.WriteInt32(ptr,0); Check(Spi(action,0,ptr,0)); return Marshal.ReadInt32(ptr)!=0; }
+        finally { Marshal.FreeHGlobal(ptr); }
+    }
+    public static void SetFlag(uint action,bool value) { Check(Spi(action,0,new IntPtr(value?1:0),3)); }
+    public static bool GetMinAnimation() {
+        ANIMATIONINFO info=new ANIMATIONINFO(); info.cbSize=(uint)Marshal.SizeOf(typeof(ANIMATIONINFO));
+        Check(SpiAnimation(0x48,info.cbSize,ref info,0)); return info.iMinAnimate!=0;
+    }
+    public static void SetMinAnimation(bool enabled) {
+        ANIMATIONINFO info=new ANIMATIONINFO(); info.cbSize=(uint)Marshal.SizeOf(typeof(ANIMATIONINFO)); info.iMinAnimate=enabled?1:0;
+        Check(SpiAnimation(0x49,info.cbSize,ref info,3));
+    }
+    public static string GetWallpaper() { StringBuilder text=new StringBuilder(2048); Check(SpiReadText(0x73,2048,text,0)); return text.ToString(); }
+    public static void SetWallpaper(string path) { Check(SpiText(0x14,0,path,3)); }
+    public static int GetBackground() { return unchecked((int)GetSysColor(1)); }
+    public static void SetBackground(int color) { Check(SetSysColors(1,new int[]{1},new int[]{color})); }
+    public static uint GetShellPid() { uint pid; GetWindowThreadProcessId(GetShellWindow(),out pid); return pid; }
+    public static void Notify() { UIntPtr result; SendMessageTimeout(new IntPtr(0xffff),0x1a,UIntPtr.Zero,"TraySettings",2,2000,out result); }
+}
+'@
+}
+
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+$userSid=$identity.User.Value
+$shellPid=[RaidVmUiNative]::GetShellPid()
+if (-not $shellPid) { throw 'Run this command from the signed-in Windows desktop, not a background service.' }
+$shellCim=Get-CimInstance Win32_Process -Filter ('ProcessId='+$shellPid)
+$shellOwner=Invoke-CimMethod -InputObject $shellCim -MethodName GetOwnerSid
+if ($shellOwner.ReturnValue -ne 0 -or $shellOwner.Sid -ne $userSid) {
+    throw 'PowerShell must run as the same account that owns this Windows desktop.'
+}
+$stateFolder=Join-Path $env:LOCALAPPDATA 'RaidVM-UI'
+$statePath=Join-Path $stateFolder 'desktop-before.json'
+
+function Restart-RaidExplorer {
+    [RaidVmUiNative]::Notify()
+    $desktopProcessId=[RaidVmUiNative]::GetShellPid()
+    $shell=Get-Process -Id $desktopProcessId -ErrorAction SilentlyContinue
+    if (-not $shell -or $shell.ProcessName -ne 'explorer' -or $shell.SessionId -ne (Get-Process -Id $PID).SessionId) {
+        Write-Warning 'Could not safely identify this desktop shell. Sign out and back in to refresh the taskbar.'
+        return
+    }
+    Stop-Process -Id $desktopProcessId -Force
+    Start-Sleep -Seconds 2
+    if ([RaidVmUiNative]::GetShellWindow() -eq [IntPtr]::Zero) {
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') | Out-Null
+    }
+}
+function Read-RaidUiBackup {
+    if (-not (Test-Path -LiteralPath $statePath)) { return $null }
+    $saved=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($statePath))
+    if ($saved.Schema -ne 1 -or $saved.UserSid -ne $userSid) { throw 'The saved UI backup is incompatible with this Windows user.' }
+    return $saved
+}
+function Save-RaidUiBackup($State) {
+    New-Item -ItemType Directory -Path $stateFolder -Force | Out-Null
+    $tempPath=$statePath+'.tmp'
+    $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $tempPath -Encoding UTF8
+    Move-Item -LiteralPath $tempPath -Destination $statePath -Force
+}
+function Invoke-RaidUiApply {
+    $saved=Read-RaidUiBackup
+    if (-not $saved -or -not $saved.Active) {
+        $saved=[pscustomobject]@{
+            Schema=1;UserSid=$userSid;ComputerName=$env:COMPUTERNAME;SavedAt=(Get-Date).ToString('o');Active=$true
+            Registry=@($settings | ForEach-Object {Get-RaidRegistrySnapshot $_.Path $_.Name})
+            Native=[pscustomobject]@{
+                UiEffects=[RaidVmUiNative]::GetFlag(0x103e)
+                ClientAnimation=[RaidVmUiNative]::GetFlag(0x1042)
+                DropShadow=[RaidVmUiNative]::GetFlag(0x1024)
+                MinAnimation=[RaidVmUiNative]::GetMinAnimation()
+                Wallpaper=[RaidVmUiNative]::GetWallpaper()
+                Background=[RaidVmUiNative]::GetBackground()
+            }
+        }
+        Save-RaidUiBackup $saved
+    }
+    $nativeTarget=[pscustomobject]@{UiEffects=$false;ClientAnimation=$false;DropShadow=$false;MinAnimation=$false;Wallpaper='';Background=0x181818}
+    $results=@(Invoke-RaidUiChanges -Registry $settings -Native $nativeTarget)
+    $saved | Add-Member -NotePropertyName LastApplyResults -NotePropertyValue $results -Force
+    try { Save-RaidUiBackup $saved }
+    catch { Write-Warning -Message ('Could not save step results; the original backup is retained. '+$_.Exception.Message) -WarningAction Continue }
+    try { Restart-RaidExplorer }
+    catch { Write-Warning -Message ('Could not refresh Explorer. Sign out and back in to refresh the taskbar. '+$_.Exception.Message) -WarningAction Continue }
+    $failed=@($results | Where-Object {-not $_.Success})
+    Write-Host ('Apply completed: '+($results.Count-$failed.Count)+'/'+$results.Count+' preferences verified.') -ForegroundColor Cyan
+    if ($failed.Count) { Write-Warning -Message 'Some preferences could not be applied. See [FAILED] above; other preferences were still processed.' -WarningAction Continue }
+    if (@($failed | Where-Object {$_.Name -like '*\TaskbarDa'}).Count) {
+        Write-Host 'Widgets/weather was not hidden. Open Settings > Personalization > Taskbar > Widgets: Off.' -ForegroundColor Yellow
+        Write-Host 'Shortcut: Start-Process ms-settings:taskbar'
+    }
+    Write-Host ('Original preferences saved: '+$statePath)
+    Write-Host 'Fonts, pinned apps, installed apps, game drivers and Windows Update were not changed.'
+    $resultMessage='Đã kiểm tra '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập giao diện.'
+    if(@($failed|Where-Object {$_.Name -like '*\TaskbarDa'}).Count){$resultMessage+=' Thời tiết bị Windows chặn: vào Settings > Personalization > Taskbar > Widgets để tắt.'}
+    Save-RaidUiOperationResult 'Apply' $results $resultMessage
+}
+function Invoke-RaidUiRestore {
+    $saved=Read-RaidUiBackup
+    if (-not $saved -or -not $saved.Active) {
+        Write-Host 'No active UI backup to restore.'
+        Save-RaidUiOperationResult 'Restore' @() 'Không có bản sao lưu giao diện đang hoạt động để khôi phục.'
+        return
+    }
+    $results=@(Invoke-RaidUiChanges -Registry @($saved.Registry) -Native $saved.Native)
+    $failed=@($results | Where-Object {-not $_.Success})
+    $saved | Add-Member -NotePropertyName LastRestoreResults -NotePropertyValue $results -Force
+    # Retain the original backup for another restore attempt if any step failed.
+    $saved.Active=$failed.Count -gt 0
+    try { Save-RaidUiBackup $saved }
+    catch { Write-Warning -Message ('Could not update backup status. The previous backup file is retained for retry. '+$_.Exception.Message) -WarningAction Continue }
+    try { Restart-RaidExplorer }
+    catch { Write-Warning -Message ('Could not refresh Explorer. Sign out and back in to refresh the taskbar. '+$_.Exception.Message) -WarningAction Continue }
+    if ($failed.Count) {
+        Write-Warning -Message ('Restore incomplete: '+$failed.Count+' preference(s) failed. The original backup is still active; option 5 can retry.') -WarningAction Continue
+    } else { Write-Host 'Previous desktop preferences restored and verified.' -ForegroundColor Green }
+    Save-RaidUiOperationResult 'Restore' $results ('Đã khôi phục '+($results.Count-$failed.Count)+'/'+$results.Count+' thiết lập. Các mục lỗi vẫn giữ bản sao lưu để thử lại.')
+}
+
+function Invoke-RaidActivationTool {
+    Write-Host 'Opening the external MAS command requested by the user:' -ForegroundColor Cyan
+    Write-Host 'irm https://get.activated.win | iex'
+    Write-Host 'This runs third-party code and can request administrator access.'
+    Write-Host 'Option 5 restores desktop preferences only; it does not undo actions performed in MAS.'
+    $powerShellExe=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    # A separate interactive process keeps the external script out of this menu's scope.
+    $tool=Start-Process -FilePath $powerShellExe -ArgumentList '-NoProfile -Command "irm https://get.activated.win | iex"' -Wait -PassThru
+    Write-Host ('External PowerShell window closed. Exit code: '+$tool.ExitCode)
+}
+
+if ($Action -eq 'Menu') {
+    Write-Host ''
+    Write-Host 'RAID VM - Menu giao dien v3 (xu ly tung muc bi chan)' -ForegroundColor Cyan
+    Write-Host '4. Toi gian giao dien: Start ben trai, an thoi tiet/Search/Task View, giam hieu ung'
+    Write-Host '5. Khoi phuc giao dien da luu'
+    Write-Host '6. Mo MAS: irm https://get.activated.win | iex (cong cu ben thu ba)'
+    Write-Host '0. Thoat'
+    Write-Host 'Luu y: 4/5 tai lai taskbar; cua so File Explorer co the dong. Hoan tat chep file truoc.'
+    switch (Read-Host 'Chon 4, 5, 6 hoac 0') {
+        '4' {$Action='Apply'}
+        '5' {$Action='Restore'}
+        '6' {$Action='Activation'}
+        '0' {return}
+        default {Write-Host 'Khong thay doi gi.';return}
+    }
+}
+if ($Action -eq 'Apply') { Invoke-RaidUiApply }
+if ($Action -eq 'Restore') { Invoke-RaidUiRestore }
+if ($Action -eq 'Activation') { Invoke-RaidActivationTool }
