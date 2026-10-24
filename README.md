@@ -11,7 +11,7 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 
 ## 1. Tải script trong máy ảo
 
-1. Mở Chrome hoặc Edge **trong máy ảo** và truy cập repo này. Repo riêng tư nên cần đăng nhập tài khoản GitHub có quyền truy cập.
+1. Mở Chrome hoặc Edge **trong máy ảo** và truy cập repo này. Repo công khai nên có thể xem và tải mà không cần đăng nhập GitHub.
 2. Bấm **Code → Download ZIP**.
 3. Giải nén ZIP bằng **Extract All / Giải nén tất cả**.
 4. Chép riêng file `Debloat-Win11-RAID.ps1` từ thư mục đã giải nén ra **Desktop của máy ảo**.
