@@ -8,8 +8,8 @@ Opening this launcher does not install/remove apps or change Windows settings.
 param([switch]$Demo,[switch]$DownloadOnly)
 
 $ErrorActionPreference='Stop'
-$bundleCommit='270f22fc5ca4dc1dfaa8cbd77a6e315f741031b4'
-$manifestSha256='3E7E9A371E52AF897A7BBBFF6372AD22A3DC0B9701D4568BAA133309BFFFB514'
+$bundleCommit='064ffc144e191023345c4da3355f34527729a4a7'
+$manifestSha256='B4FE1C39080939E1053314F7A03BFFFC23292E53E58FD3D2AE6DA2CD7513B5E9'
 $script:RaidToolkitSource='https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup'
 $script:RaidToolkitFiles=@(
     'RAID-Toolkit.ps1'
