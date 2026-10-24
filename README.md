@@ -1,158 +1,101 @@
-# Dọn Windows 11 cho máy ảo treo RAID
+# RAID VM Toolkit — bảng điều khiển tiếng Việt
 
-Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow Legends qua Plarium Play**.
+Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Legends qua Plarium Play**. Một lệnh mở toàn bộ công cụ; chọn chức năng bằng nút bấm, không phải nhớ từng lệnh riêng.
 
-## Trước khi chạy
+## Mở bằng một lệnh
 
-- Thực hiện **bên trong máy ảo**, mở Windows PowerShell bằng **Run as administrator**.
-- Tạo snapshot khi máy ảo đã tắt để có thể quay lại trạng thái trước khi dọn. Gỡ app có thể xóa dữ liệu của app đó; các file CSV trong nhật ký không phải bản sao lưu phục hồi.
-- Đóng các app sắp gỡ, hoàn tất cập nhật đang chờ rồi khởi động lại nếu Windows yêu cầu.
-- Script có chặn tên máy thật đã biết trong lần thiết lập này. Đây không phải cơ chế nhận diện mọi máy thật; vẫn phải kiểm tra đang thao tác trong máy ảo.
-
-## Menu giao diện: chọn một lần để làm taskbar gọn hơn
-
-Trong **máy ảo**, mở Windows PowerShell bằng tài khoản đang đăng nhập Desktop, rồi dán:
+Trong **máy ảo**, mở **Windows PowerShell**, bằng đúng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/5146402aacc4ed09ea6d6948b2287d11b34e14c2/Optimize-RAID-UI.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Start-RAID-Toolkit.ps1' | iex
 ```
 
-| Phím | Chức năng của menu giao diện |
+Không cần tải ZIP, Git, GitHub Desktop hoặc cài bộ SDK. Máy ảo cần Internet để tải công cụ và bộ cài được chọn. Lệnh chỉ mở bảng điều khiển, chưa tự cài, gỡ hay đổi thiết lập. Các tác vụ cần quản trị sẽ yêu cầu UAC; dùng đúng tài khoản Windows hiện tại.
+
+Chỉ chạy trong máy ảo. Công cụ chặn tên máy thật đã biết trong phiên thiết lập này; đây không phải cơ chế nhận diện mọi máy thật.
+
+## Các chức năng
+
+| Mục | Thực hiện |
 | --- | --- |
-| **4** | Áp dụng giao diện tối giản |
-| **5** | Khôi phục giao diện đã lưu trước khi áp dụng |
-| **6** | Mở công cụ MAS bằng lệnh `irm https://get.activated.win \| iex` do người dùng yêu cầu |
-| **0** | Thoát |
+| **1. Dọn app** | Xem trước hoặc gỡ danh sách app Windows tiêu dùng, Store/Xbox và thử gỡ OneDrive bằng bộ gỡ có chữ ký Microsoft. |
+| **2. Cài phần mềm** | Tích chọn Chrome, WinRAR x64, .NET Desktop Runtime 8 x64, Visual C++ v14 x86 và x64. Không chạy dọn app ở mục này. |
+| **3. Windows Update** | Đọc trạng thái, đặt chính sách chặn cập nhật tự động, hoặc khôi phục thiết lập đã sao lưu. |
+| **4. Tối giản giao diện** | Start/icon sang trái; ẩn Widgets/thời tiết, Search và Task View; giảm hiệu ứng, tắt trong suốt, nền tối trơn. |
+| **5. Khôi phục giao diện** | Trả lại các thiết lập giao diện đã lưu. Không cài lại app đã gỡ. |
+| **6. Công cụ riêng** | Mở cửa sổ riêng chạy lệnh bên thứ ba đã được người dùng yêu cầu. |
+| **9. Làm nhanh** | Cài các mục đã chọn → dọn app → tối giản giao diện. Không ghép chặn Update hoặc công cụ riêng. |
 
-**Phím 6** mở một cửa sổ PowerShell riêng và chạy đúng lệnh trên. Đây là công cụ bên thứ ba từ `get.activated.win`/Massgrave, có thể yêu cầu quyền administrator; script của repo chỉ mở công cụ, không tự chọn phương thức kích hoạt hay xác nhận kích hoạt thành công. **Phím 5 chỉ khôi phục giao diện, không hoàn tác các thay đổi do MAS thực hiện.** Mục 6 không chạy khi chọn 4 hoặc 5. Chưa chạy công cụ này trên máy thật hoặc máy ảo trong kiểm thử.
+Cửa sổ có tiến trình đang thực hiện, kết quả từng bước và nút **Mở nhật ký**. Tác vụ chạy trong tiến trình riêng để cửa sổ vẫn phản hồi. Khi đang chạy, các nút thực hiện bị khóa để tránh chạy trùng. Không tự khởi động lại máy ảo.
 
-**Phím 4 áp dụng cùng lúc:**
+## Trước khi dọn hoặc tối giản
 
-- Đưa nút **Start và các icon taskbar về bên trái**, taskbar vẫn nằm dưới màn hình.
-- Ẩn **Widgets/thời tiết**, ô **Search** và nút **Task View**.
-- Tắt trong suốt, giảm animation và hiệu ứng bóng đổ mà Windows cho phép điều khiển.
-- Đổi hình nền sang **màu tối trơn**.
-- Giữ chữ dễ đọc, các app đang ghim trên taskbar, game và driver.
+- Tạo **snapshot khi máy ảo đã tắt** trước lần dọn đầu tiên. Gỡ app có thể xóa dữ liệu của app đó; nhật ký không phải bản sao lưu phục hồi.
+- Chọn **Xem trước danh sách** ở mục 1 trước khi gỡ. Bản này gỡ Store/Xbox nên không dùng cho máy cần Xbox/Game Pass hoặc cài game qua Microsoft Store.
+- Hoàn tất việc chép file trước mục **4, 5 hoặc 9**: Explorer được tải lại để nhận thiết lập, các cửa sổ File Explorer có thể đóng.
+- Trong **Làm nhanh**, nếu cài phần mềm chưa hoàn tất, công cụ dừng trước bước dọn app. Nếu một mục giao diện bị chặn, các mục khác vẫn được xử lý và kết quả báo một phần.
 
-**Trước khi chọn 4 hoặc 5:** hoàn tất việc chép file. Script sẽ tải lại Explorer để taskbar nhận thiết lập ngay; các cửa sổ File Explorer có thể đóng. Game không bị script chủ động tắt, nhưng nên áp dụng lúc chưa chơi để tránh gián đoạn thao tác.
+Script dọn giữ RAID/Plarium Play, Steam nếu có, driver, Guest Additions phục vụ chuột/copy-paste, DirectX, .NET, Visual C++, WebView2, App Installer, codec, Defender, Windows Update và thành phần lõi Windows. Không ép gỡ Edge hoặc xóa thư mục hệ thống. Không chủ động xóa thư mục dữ liệu OneDrive.
 
-Thiết lập gốc được lưu tại `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json`. Áp dụng lại không ghi đè bản gốc khi bản tối giản vẫn đang hoạt động. Phím 5 khôi phục các thiết lập mà script đã chỉnh; không cài lại các app đã bị gỡ bởi script dọn riêng.
+Dọn app hoặc tắt hiệu ứng không bảo đảm tăng FPS hay sửa lỗi chuột/driver. Công cụ không tự đổi cấu hình VirtualBox và không cài RAID/Plarium Play.
 
-**Bản v3 sửa lỗi `SetValue / UnauthorizedAccessException`:** xử lý riêng từng thiết lập, kiểm tra lại giá trị sau khi ghi, và báo `[FAILED]` kèm đúng đường dẫn/tên mục bị chặn. Một mục lỗi không làm dừng các mục tiếp theo. Bản sao lưu tạo bởi bản cũ vẫn dùng được; không cần xóa file sao lưu hoặc chạy phím 5 trước khi thử lại phím 4. Kết quả từng bước được lưu cùng bản sao lưu. Nếu khôi phục chưa đủ, bản sao lưu vẫn hoạt động để chọn 5 thử lại.
+## Cài phần mềm và thư viện
 
-Nếu `[FAILED]` chỉ rõ `TaskbarDa`, Windows đang không cho script đổi mục Widgets/thời tiết. Mở **Settings → Personalization → Taskbar → Widgets → Off** (Windows tiếng Nhật: **設定 → 個人用設定 → タスク バー → ウィジェット**). Có thể mở nhanh trang này bằng `Start-Process ms-settings:taskbar`. Đây là [cách chỉnh Widgets trong Settings do Microsoft hướng dẫn](https://support.microsoft.com/en-us/windows/experience/personalization/customize-the-taskbar-in-windows). Script không đổi quyền registry hoặc tắt thành phần bảo vệ để ép ghi giá trị bị chặn.
+- Bộ cài từ Google, RARLAB và Microsoft; kiểm tra chữ ký Authenticode và nhà phát hành trước khi chạy. .NET được đối chiếu thêm SHA-512 trong metadata Microsoft.
+- Các bộ cài cần dùng được tải và xác minh trước khi bắt đầu cài. Nếu bước chuẩn bị/xác minh lỗi, chưa khởi chạy bộ cài nào của lần đó.
+- Nếu một bộ cài lỗi trong giai đoạn cài, các bộ cài độc lập còn lại vẫn được thử và có kết quả riêng. Phần mềm đã cài thành công trước lỗi không tự được gỡ lại.
+- Giữ bản Chrome/WinRAR và dòng runtime 8.0.x/14.x đã có; công cụ không phải trình cập nhật phiên bản vá cho phần mềm hiện có.
+- **WinRAR là bản dùng thử**, không kèm bản quyền hoặc công cụ kích hoạt WinRAR.
+- **.NET Desktop Runtime 8 x64** phục vụ phần mềm cần đúng phiên bản 8; không cài SDK. .NET 8 hết hỗ trợ ngày **10/11/2026**. Giữ runtime cần thiết và theo dõi cập nhật từ hãng phần mềm. [.NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core)
+- **Visual C++ v14 x86/x64** là dòng runtime dùng chung cho các ứng dụng tương thích xây bằng Visual Studio 2015 trở đi. Chưa gộp các runtime 2005–2013 hoặc .NET Framework 3.5 vào bộ này; cài riêng khi phần mềm cũ yêu cầu. [Microsoft VC++](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
 
-Menu này áp dụng cho **tài khoản Windows hiện tại**; không mở PowerShell bằng một tài khoản admin khác. Script có chặn tên máy thật đã biết, nhưng vẫn phải tự kiểm tra đang ở trong máy ảo.
+## Windows Update: phạm vi và khôi phục
 
-Muốn áp dụng thẳng không hiện menu, **sau khi đã hoàn tất chép file và biết Explorer sẽ được tải lại**, dùng:
+Mục 3 chỉ quản lý chính sách `HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoUpdate`. Không tắt BITS, WaaSMedic, Defender, không sửa quyền dịch vụ/registry, không chặn mạng Microsoft.
 
-```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/5146402aacc4ed09ea6d6948b2287d11b34e14c2/Optimize-RAID-UI.ps1'))) -Action Apply
-```
+- Dùng trên các phiên bản Windows hỗ trợ chính sách tương ứng như Pro, Enterprise, Education và IoT; **Windows Home bị từ chối thao tác chặn**.
+- Đây là **chặn cập nhật tự động bằng chính sách**, không bảo đảm ngăn mọi cách cập nhật hoặc chặn vĩnh viễn. Cập nhật thủ công và chính sách quản trị mạnh hơn có thể vẫn áp dụng. Thao tác chặn có thể ngừng nhận bản vá bảo mật tự động.
+- Lưu trạng thái gốc một lần trước khi đổi; chạy chặn lại không ghi đè bản gốc. **Khôi phục** trả đúng trạng thái trước khi công cụ chỉnh. Nếu ban đầu đã bị chặn, khôi phục vẫn giữ trạng thái chặn ban đầu.
+- Nếu MDM đặt bỏ qua các chính sách Windows Update từ Group Policy, công cụ báo không hỗ trợ thay vì báo đã chặn thành công.
 
-Đổi `Apply` thành `Restore` để khôi phục, hoặc `Preview` để chỉ xem danh sách thay đổi.
+[Microsoft: cấu hình Automatic Updates bằng registry](https://learn.microsoft.com/en-us/windows/deployment/update/waas-wu-settings#configuring-automatic-updates-by-editing-the-registry)
 
-Các mục **4/5** của menu chỉ chỉnh/khôi phục giao diện; không gỡ/cài app, không thay đổi sleep hoặc Windows Update. Mục **6** chạy công cụ ngoài theo mô tả trên. Ẩn Widgets không bảo đảm toàn bộ thành phần Widgets ngừng chạy nền; các mục giao diện không ép gỡ gói hệ thống hoặc phần mềm ghim sẵn. Một số hiệu ứng hiện đại hoặc chính sách quản trị có thể không tuân theo thiết lập này.
+## Tiếng Việt và các mục bị Windows chặn
 
-Đã kiểm tra bằng Windows PowerShell 5.1: cú pháp, biên dịch phần gọi API Windows, các lệnh đọc trạng thái, và sao lưu/khôi phục registry qua JSON (gồm giá trị chưa tồn tại, DWORD, chuỗi, chuỗi mở rộng và dữ liệu nhị phân) trên khóa thử riêng. Kiểm thử mô phỏng thêm lỗi từ chối ghi, tiếp tục các mục sau lỗi, phát hiện giá trị đọc lại không khớp, giữ bản sao lưu cũ sau áp dụng một phần và khôi phục lại sau lỗi. Chưa thực thi Apply/Restore lên giao diện máy ảo trong kiểm thử; chưa có ảnh xác nhận giao diện sau áp dụng.
+Phần khởi chạy dùng chữ ASCII, tải mã dưới dạng byte và giải mã UTF-8 rõ ràng. Các script lưu cục bộ dưới dạng UTF-8 BOM cho Windows PowerShell 5.1. Cửa sổ dùng font Segoe UI và thông báo chính bằng tiếng Việt; nhật ký kỹ thuật có thể chứa lỗi bằng ngôn ngữ của Windows. [Microsoft: PowerShell character encoding](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-5.1)
 
-## Cách nhanh: một lệnh dọn app + cài Chrome và WinRAR
+Một thiết lập không ghi được sẽ có kết quả lỗi riêng; không đổi quyền registry để ép ghi. Nếu Widgets/thời tiết còn hiện và kết quả nhắc `TaskbarDa`, vào **Settings → Personalization → Taskbar → Widgets → Off**. Windows tiếng Nhật: **設定 → 個人用設定 → タスク バー → ウィジェット**. [Microsoft: taskbar](https://support.microsoft.com/en-us/windows/experience/personalization/customize-the-taskbar-in-windows)
 
-Trong **máy ảo**, mở Start → tìm **Windows PowerShell** → **Run as administrator**. Tạo snapshot trước khi dọn, rồi dán nguyên dòng này và Enter:
+## Công cụ riêng ở mục 6
 
-```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Setup-RAID-VM.ps1' | iex
-```
+Chỉ khi chủ động chọn mục 6 và xác nhận, công cụ mở cửa sổ PowerShell riêng chạy `irm https://get.activated.win | iex`, theo yêu cầu người dùng trước đó. Đây là mã bên thứ ba từ get.activated.win/Massgrave, có thể yêu cầu quyền quản trị. Không tự chọn phương thức hoặc khẳng định kích hoạt thành công. Khôi phục giao diện không hoàn tác thay đổi của công cụ ngoài. Chưa thực thi công cụ này trong kiểm thử.
 
-Không cần tải ZIP hoặc chép file ra Desktop. Máy ảo cần Internet: PowerShell tự tải script và bộ cài về `C:\ProgramData\RaidVM-Setup\<ngày-giờ-mã>`, cài Chrome/WinRAR còn thiếu rồi mới dọn các app Windows bên dưới. Bộ cài lấy từ Google và RARLAB, được kiểm tra chữ ký trước khi chạy; bản script dọn được cố định phiên bản và kiểm tra SHA-256. Không tắt Defender hay kiểm tra chứng chỉ mạng.
+## Sao lưu và nhật ký nằm ở đâu?
 
-- Nếu đã có Chrome hoặc WinRAR tại các đường dẫn cài đặt phổ biến, script giữ bản đang có, không tự cập nhật chúng.
-- WinRAR được cài ở dạng **dùng thử**, không kèm bản quyền hoặc công cụ kích hoạt. Bản cài WinRAR mới là bản tiếng Anh x64 ổn định.
-- Nếu tải, kiểm tra chữ ký hoặc cài tiện ích thất bại, script dừng trước bước dọn app. Một tiện ích có thể đã cài thành công trước khi bước tiếp theo thất bại.
-- Dùng Windows PowerShell **64-bit** trên máy ảo Windows 11 **x64**, không áp dụng bản setup này cho ARM64.
-- Script không tự cài RAID/Plarium Play và không tự khởi động lại. Chạy một lần trên mỗi máy ảo mới.
-
-Muốn **xem trước**, không cài hoặc gỡ app, dùng dòng này thay cho dòng trên:
-
-```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Setup-RAID-VM.ps1'))) -Preview
-```
-
-Chế độ xem trước vẫn tải script dọn về thư mục setup để liệt kê các app. Đây là lệnh tải và thực thi mã từ repo này bằng quyền quản trị; có thể mở [Setup-RAID-VM.ps1](Setup-RAID-VM.ps1) để đọc trước. Không cần thay đổi ExecutionPolicy lâu dài.
-
-## Cách thủ công: chỉ dọn app, không cài thêm tiện ích
-
-### 1. Tải script trong máy ảo
-
-1. Mở Chrome hoặc Edge **trong máy ảo** và truy cập repo này. Repo công khai nên có thể xem và tải mà không cần đăng nhập GitHub.
-2. Bấm **Code → Download ZIP**.
-3. Giải nén ZIP bằng **Extract All / Giải nén tất cả**.
-4. Chép riêng file `Debloat-Win11-RAID.ps1` từ thư mục đã giải nén ra **Desktop của máy ảo**.
-
-Không chạy trực tiếp file đang nằm trong ZIP. Không cần cài Git hay GitHub Desktop.
-
-### 2. Mở PowerShell quản trị
-
-Trong máy ảo, mở Start, tìm **Windows PowerShell**, bấm chuột phải → **Run as administrator**. Đồng ý hộp thoại UAC trong máy ảo.
-
-### Xem trước, chưa gỡ gì
-
-Chép nguyên dòng dưới đây vào PowerShell rồi Enter:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$([Environment]::GetFolderPath('Desktop'))\Debloat-Win11-RAID.ps1" -Preview
-```
-
-### Gỡ các app đã chọn
-
-Sau khi xem danh sách, chạy dòng này:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$([Environment]::GetFolderPath('Desktop'))\Debloat-Win11-RAID.ps1"
-```
-
-Chờ hiện `Cleanup finished` và đường dẫn `Logs:`. Script không tự khởi động lại; sau khi chạy xong, khởi động lại máy ảo rồi mở Plarium Play và kiểm tra RAID.
-
-`-ExecutionPolicy Bypass` ở đây chỉ áp dụng cho tiến trình PowerShell được mở bởi câu lệnh, không thay đổi chính sách lâu dài và không tắt Defender.
-
-## Script gỡ những gì?
-
-Script dùng danh sách tên gói cụ thể để gỡ các app tiêu dùng cài sẵn: Copilot, Teams, Outlook mới, Office Hub, Xbox/Gaming Services, Microsoft Store, Clipchamp, Photos, Paint, Notepad, Calculator, Camera, Maps, Weather, News, Phone Link và các app khác được liệt kê trong file `.ps1`.
-
-Script cũng gỡ các gói dự phòng tương ứng cho tài khoản Windows tạo sau này và thử gỡ OneDrive bằng bộ gỡ có chữ ký Microsoft. Script không chủ động xóa thư mục dữ liệu OneDrive.
-
-**Giữ lại:** RAID, Plarium Play, Steam nếu có, driver, Guest Additions phục vụ chuột/copy-paste, DirectX, .NET, Visual C++, WebView2, App Installer, codec, Defender, Windows Update và thành phần lõi Windows. Edge và các gói Windows được bảo vệ không bị ép gỡ.
-
-Đây là bản dọn mạnh cho RAID qua Plarium Play. Sau khi gỡ Store và Xbox, không dùng bản này cho máy ảo cần Xbox/Game Pass hoặc cài game qua Microsoft Store. Bản thân Windows là phần mềm Microsoft nên không thể xóa toàn bộ thành phần Microsoft mà vẫn giữ Windows hoạt động.
-
-## Dùng cho những máy ảo sau này
-
-- **Chạy một lần sau khi cài Windows và Guest Additions trên mỗi máy ảo mới.** Không cần chạy lại mỗi lần bật máy, không cần đưa vào Startup.
-- Có thể tạo một máy ảo mẫu đã dọn xong rồi clone để dùng lại. Cần kiểm tra cài đặt và giấy phép của Windows/game khi clone.
-- Sau một bản cập nhật Windows lớn, nếu app xuất hiện lại thì chạy `-Preview` để kiểm tra trước khi dọn lại. Script không bảo đảm app sẽ không được Windows cài lại về sau.
-- Dọn app không bảo đảm tăng FPS hay giảm RAM đáng kể; hiệu quả tùy những app trước đó có thực sự chạy nền hay không.
-
-## Nếu gặp lỗi
-
-| Thông báo / tình huống | Cách xử lý |
+| Nội dung | Vị trí |
 | --- | --- |
-| `requires elevation` / cần quyền quản trị | Đóng cửa sổ rồi mở **Windows PowerShell → Run as administrator** trong máy ảo. |
-| Không tìm thấy file `.ps1` | Kiểm tra đã giải nén và chép đúng file ra Desktop của máy ảo; bật hiển thị phần mở rộng để tránh tên `.ps1.txt`. |
-| `This is the real host PC` | Script nhận ra tên máy thật đã được chặn. Chuyển file vào máy ảo; không xóa chặn để chạy trên máy thật. |
-| Một vài app không gỡ được | Có thể app đang mở hoặc Windows bảo vệ gói đó. Xem nhật ký; không cần ép xóa thư mục hệ thống. |
-| RAID/Plarium gặp lỗi sau khi dọn | Quay lại snapshot để đối chiếu; nhật ký CSV không tự khôi phục được app và dữ liệu. |
+| Bộ công cụ đã kiểm tra | `%LOCALAPPDATA%\RaidVM-Toolkit\Releases\<commit>` |
+| Yêu cầu, kết quả JSON và log từng lần chạy | `%LOCALAPPDATA%\RaidVM-Toolkit\Runs\<ngày-giờ-mã>` |
+| Sao lưu giao diện | `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json` |
+| Sao lưu chính sách Update | `C:\ProgramData\RaidVM-Toolkit\Update\before.json` |
+| Bộ cài/nhật ký cài phần mềm | `C:\ProgramData\RaidVM-Toolkit\Install\<ngày-giờ-mã>` |
+| Danh sách app trước/sau khi dọn | `C:\ProgramData\RaidVM-Cleanup\<ngày-giờ>` |
 
-Nhật ký được lưu trong `C:\ProgramData\RaidVM-Cleanup\<ngày-giờ>`, gồm danh sách trước khi dọn, kết quả từng bước và các app mục tiêu còn lại. Không tải nhật ký lên repo vì có thể chứa thông tin cài đặt riêng của máy ảo.
+Bản sao lưu giao diện từ menu cũ vẫn dùng được. Khi khôi phục lỗi một phần, bản sao lưu tiếp tục được giữ để thử lại. Không tải nhật ký hoặc bản sao lưu cá nhân lên repo công khai.
 
-## Trạng thái kiểm tra và tài liệu
+## Trạng thái kiểm tra
 
-Các script đã được phân tích cú pháp bằng Windows PowerShell. Đã kiểm tra SHA-256 của bản dọn được tải từ GitHub, đường dẫn tải chính hãng và chữ ký bộ cài WinRAR. Chưa thực thi cài Chrome/WinRAR hoặc gỡ app trên một máy ảo kiểm thử; không có cam kết mọi phiên bản Windows hoặc launcher sẽ hoạt động giống nhau.
+Đã kiểm tra trên Windows PowerShell 5.1: cú pháp, hiển thị WinForms tiếng Việt, xử lý UTF-8/BOM, truyền tham số và kết quả qua tiến trình con, hash/cache bộ khởi chạy, luồng Làm nhanh, lỗi từng bước và sao lưu/khôi phục. Các thao tác cài/gỡ và chặn cập nhật được kiểm thử bằng mô phỏng; phần registry thử nghiệm chỉ dùng khóa thử riêng. Đã chạy thực tế chức năng chỉ đọc trạng thái Update và xem trước bộ cài.
 
-- [Microsoft: Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
-- [Microsoft: Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
-- [Google: Chrome Enterprise download](https://chromeenterprise.google/download/)
-- [RARLAB: WinRAR downloads](https://www.rarlab.com/download.htm)
-- [Microsoft: Taskbar settings resource](https://github.com/microsoft/winget-dsc/blob/main/resources/Microsoft.Windows.Developer/Microsoft.Windows.Developer.psm1)
-- [Microsoft: SystemParametersInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+**Chưa chạy toàn bộ cài/gỡ/chặn cập nhật trong máy ảo kiểm thử**, chưa chứng minh tăng hiệu năng hoặc tương thích mọi bản Windows/game. Ảnh xem thử giao diện không phải bằng chứng đã tối ưu máy ảo.
 
-`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên. Các mục 4/5 trong `Optimize-RAID-UI.ps1` chỉnh giao diện bằng registry/API Windows; riêng mục 6 mở lệnh MAS bên thứ ba do người dùng yêu cầu. Không dùng công cụ chỉnh taskbar của bên thứ ba.
+## Các tệp trong repo
+
+- `Start-RAID-Toolkit.ps1`: một điểm khởi chạy; tải bản cố định và kiểm tra mã băm trước khi mở cửa sổ.
+- `Toolkit.manifest.json`: danh sách sáu module và SHA-256 văn bản đã chuẩn hóa.
+- `RAID-Toolkit.ps1`: cửa sổ WinForms tiếng Việt.
+- `Invoke-RAID-Task.ps1`: tác vụ nền, kiểm tra tài khoản/quyền và ghi kết quả.
+- `Install-RAID-Apps.ps1`, `Debloat-Win11-RAID.ps1`, `Manage-RAID-Update.ps1`, `Optimize-RAID-UI.ps1`: các chức năng độc lập.
+- `Setup-RAID-VM.ps1`: lệnh cũ cài Chrome/WinRAR rồi dọn, giữ để tương thích. Bảng điều khiển mới không gọi luồng gộp này.
+
+Mã băm giúp kiểm tra bản tải có đúng bộ tệp đã cố định; đây không phải chữ ký số Microsoft cho script của repo. Lệnh khởi chạy tải và thực thi mã từ repo này.
