@@ -9,7 +9,33 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 - Đóng các app sắp gỡ, hoàn tất cập nhật đang chờ rồi khởi động lại nếu Windows yêu cầu.
 - Script có chặn tên máy thật đã biết trong lần thiết lập này. Đây không phải cơ chế nhận diện mọi máy thật; vẫn phải kiểm tra đang thao tác trong máy ảo.
 
-## 1. Tải script trong máy ảo
+## Cách nhanh: một lệnh dọn app + cài Chrome và WinRAR
+
+Trong **máy ảo**, mở Start → tìm **Windows PowerShell** → **Run as administrator**. Tạo snapshot trước khi dọn, rồi dán nguyên dòng này và Enter:
+
+```powershell
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Setup-RAID-VM.ps1' | iex
+```
+
+Không cần tải ZIP hoặc chép file ra Desktop. Máy ảo cần Internet: PowerShell tự tải script và bộ cài về `C:\ProgramData\RaidVM-Setup\<ngày-giờ-mã>`, cài Chrome/WinRAR còn thiếu rồi mới dọn các app Windows bên dưới. Bộ cài lấy từ Google và RARLAB, được kiểm tra chữ ký trước khi chạy; bản script dọn được cố định phiên bản và kiểm tra SHA-256. Không tắt Defender hay kiểm tra chứng chỉ mạng.
+
+- Nếu đã có Chrome hoặc WinRAR tại các đường dẫn cài đặt phổ biến, script giữ bản đang có, không tự cập nhật chúng.
+- WinRAR được cài ở dạng **dùng thử**, không kèm bản quyền hoặc công cụ kích hoạt. Bản cài WinRAR mới là bản tiếng Anh x64 ổn định.
+- Nếu tải, kiểm tra chữ ký hoặc cài tiện ích thất bại, script dừng trước bước dọn app. Một tiện ích có thể đã cài thành công trước khi bước tiếp theo thất bại.
+- Dùng Windows PowerShell **64-bit** trên máy ảo Windows 11 **x64**, không áp dụng bản setup này cho ARM64.
+- Script không tự cài RAID/Plarium Play và không tự khởi động lại. Chạy một lần trên mỗi máy ảo mới.
+
+Muốn **xem trước**, không cài hoặc gỡ app, dùng dòng này thay cho dòng trên:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Setup-RAID-VM.ps1'))) -Preview
+```
+
+Chế độ xem trước vẫn tải script dọn về thư mục setup để liệt kê các app. Đây là lệnh tải và thực thi mã từ repo này bằng quyền quản trị; có thể mở [Setup-RAID-VM.ps1](Setup-RAID-VM.ps1) để đọc trước. Không cần thay đổi ExecutionPolicy lâu dài.
+
+## Cách thủ công: chỉ dọn app, không cài thêm tiện ích
+
+### 1. Tải script trong máy ảo
 
 1. Mở Chrome hoặc Edge **trong máy ảo** và truy cập repo này. Repo công khai nên có thể xem và tải mà không cần đăng nhập GitHub.
 2. Bấm **Code → Download ZIP**.
@@ -18,7 +44,7 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 
 Không chạy trực tiếp file đang nằm trong ZIP. Không cần cài Git hay GitHub Desktop.
 
-## 2. Mở PowerShell quản trị
+### 2. Mở PowerShell quản trị
 
 Trong máy ảo, mở Start, tìm **Windows PowerShell**, bấm chuột phải → **Run as administrator**. Đồng ý hộp thoại UAC trong máy ảo.
 
@@ -73,9 +99,11 @@ Nhật ký được lưu trong `C:\ProgramData\RaidVM-Cleanup\<ngày-giờ>`, g�
 
 ## Trạng thái kiểm tra và tài liệu
 
-Script đã được phân tích cú pháp bằng Windows PowerShell; chưa chạy gỡ app thực tế trên một máy ảo kiểm thử. Không có cam kết mọi phiên bản Windows hoặc launcher sẽ hoạt động giống nhau.
+Các script đã được phân tích cú pháp bằng Windows PowerShell. Đã kiểm tra SHA-256 của bản dọn được tải từ GitHub, đường dẫn tải chính hãng và chữ ký bộ cài WinRAR. Chưa thực thi cài Chrome/WinRAR hoặc gỡ app trên một máy ảo kiểm thử; không có cam kết mọi phiên bản Windows hoặc launcher sẽ hoạt động giống nhau.
 
 - [Microsoft: Remove-AppxPackage](https://learn.microsoft.com/en-us/powershell/module/appx/remove-appxpackage)
 - [Microsoft: Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
+- [Google: Chrome Enterprise download](https://chromeenterprise.google/download/)
+- [RARLAB: WinRAR downloads](https://www.rarlab.com/download.htm)
 
-Script chỉ thực thi nội dung có trong file, không tải và chạy thêm công cụ dọn hệ thống từ Internet.
+`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên, không tải công cụ dọn hệ thống của bên thứ ba.
