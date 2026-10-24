@@ -14,7 +14,7 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 Trong **máy ảo**, mở Windows PowerShell bằng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/51440316f462c9d752bb9c35c987afead536eed3/Optimize-RAID-UI.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/5146402aacc4ed09ea6d6948b2287d11b34e14c2/Optimize-RAID-UI.ps1' | iex
 ```
 
 | Phím | Chức năng của menu giao diện |
@@ -38,19 +38,23 @@ irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/51440316f46
 
 Thiết lập gốc được lưu tại `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json`. Áp dụng lại không ghi đè bản gốc khi bản tối giản vẫn đang hoạt động. Phím 5 khôi phục các thiết lập mà script đã chỉnh; không cài lại các app đã bị gỡ bởi script dọn riêng.
 
+**Bản v3 sửa lỗi `SetValue / UnauthorizedAccessException`:** xử lý riêng từng thiết lập, kiểm tra lại giá trị sau khi ghi, và báo `[FAILED]` kèm đúng đường dẫn/tên mục bị chặn. Một mục lỗi không làm dừng các mục tiếp theo. Bản sao lưu tạo bởi bản cũ vẫn dùng được; không cần xóa file sao lưu hoặc chạy phím 5 trước khi thử lại phím 4. Kết quả từng bước được lưu cùng bản sao lưu. Nếu khôi phục chưa đủ, bản sao lưu vẫn hoạt động để chọn 5 thử lại.
+
+Nếu `[FAILED]` chỉ rõ `TaskbarDa`, Windows đang không cho script đổi mục Widgets/thời tiết. Mở **Settings → Personalization → Taskbar → Widgets → Off** (Windows tiếng Nhật: **設定 → 個人用設定 → タスク バー → ウィジェット**). Có thể mở nhanh trang này bằng `Start-Process ms-settings:taskbar`. Đây là [cách chỉnh Widgets trong Settings do Microsoft hướng dẫn](https://support.microsoft.com/en-us/windows/experience/personalization/customize-the-taskbar-in-windows). Script không đổi quyền registry hoặc tắt thành phần bảo vệ để ép ghi giá trị bị chặn.
+
 Menu này áp dụng cho **tài khoản Windows hiện tại**; không mở PowerShell bằng một tài khoản admin khác. Script có chặn tên máy thật đã biết, nhưng vẫn phải tự kiểm tra đang ở trong máy ảo.
 
 Muốn áp dụng thẳng không hiện menu, **sau khi đã hoàn tất chép file và biết Explorer sẽ được tải lại**, dùng:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/51440316f462c9d752bb9c35c987afead536eed3/Optimize-RAID-UI.ps1'))) -Action Apply
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/5146402aacc4ed09ea6d6948b2287d11b34e14c2/Optimize-RAID-UI.ps1'))) -Action Apply
 ```
 
 Đổi `Apply` thành `Restore` để khôi phục, hoặc `Preview` để chỉ xem danh sách thay đổi.
 
 Các mục **4/5** của menu chỉ chỉnh/khôi phục giao diện; không gỡ/cài app, không thay đổi sleep hoặc Windows Update. Mục **6** chạy công cụ ngoài theo mô tả trên. Ẩn Widgets không bảo đảm toàn bộ thành phần Widgets ngừng chạy nền; các mục giao diện không ép gỡ gói hệ thống hoặc phần mềm ghim sẵn. Một số hiệu ứng hiện đại hoặc chính sách quản trị có thể không tuân theo thiết lập này.
 
-Đã kiểm tra bằng Windows PowerShell 5.1: cú pháp, biên dịch phần gọi API Windows, các lệnh đọc trạng thái, và sao lưu/khôi phục registry qua JSON (gồm giá trị chưa tồn tại, DWORD, chuỗi, chuỗi mở rộng và dữ liệu nhị phân) trên khóa thử riêng. Chưa thực thi Apply/Restore lên giao diện máy ảo trong kiểm thử; chưa có ảnh xác nhận giao diện sau áp dụng.
+Đã kiểm tra bằng Windows PowerShell 5.1: cú pháp, biên dịch phần gọi API Windows, các lệnh đọc trạng thái, và sao lưu/khôi phục registry qua JSON (gồm giá trị chưa tồn tại, DWORD, chuỗi, chuỗi mở rộng và dữ liệu nhị phân) trên khóa thử riêng. Kiểm thử mô phỏng thêm lỗi từ chối ghi, tiếp tục các mục sau lỗi, phát hiện giá trị đọc lại không khớp, giữ bản sao lưu cũ sau áp dụng một phần và khôi phục lại sau lỗi. Chưa thực thi Apply/Restore lên giao diện máy ảo trong kiểm thử; chưa có ảnh xác nhận giao diện sau áp dụng.
 
 ## Cách nhanh: một lệnh dọn app + cài Chrome và WinRAR
 
