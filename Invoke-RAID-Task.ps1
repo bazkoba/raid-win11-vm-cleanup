@@ -32,10 +32,10 @@ function Assert-RaidTaskEnvironment($Request) {
     if([Environment]::OSVersion.Version.Build -lt 22000 -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64'){
         throw 'Công cụ này cần Windows 11 x64 và Windows PowerShell 64-bit.'
     }
-    if($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Request.Action -notin @('PreviewCleanup','UpdateStatus')){
+    if($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -and $Request.Action -notin @('PreviewCleanup','UpdateStatus','ServicesPreview','ServicesStatus')){
         throw 'Đây là máy thật đã được chặn. Chỉ thực hiện tác vụ bên trong máy ảo Windows 11.'
     }
-    if($Request.Action -in @('PreviewCleanup','Cleanup','Install','UpdateBlock','UpdateRestore','Quick')){
+    if($Request.Action -in @('PreviewCleanup','Cleanup','Install','UpdateBlock','UpdateRestore','Quick','ServicesApply','ServicesRestore')){
         $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
         if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
             throw 'Tác vụ cần quyền quản trị. Hãy chấp nhận UAC bằng đúng tài khoản Windows hiện tại.'
@@ -43,7 +43,7 @@ function Assert-RaidTaskEnvironment($Request) {
     }
 }
 
-function Get-RaidTaskPlan([string]$Action) {
+function Get-RaidTaskPlan([string]$Action,[bool]$IncludeServices=$false) {
     switch($Action){
         'PreviewCleanup' {return @('PreviewCleanup')}
         'Cleanup' {return @('Cleanup')}
@@ -53,7 +53,15 @@ function Get-RaidTaskPlan([string]$Action) {
         'UpdateRestore' {return @('UpdateRestore')}
         'UiApply' {return @('UiApply')}
         'UiRestore' {return @('UiRestore')}
-        'Quick' {return @('Install','Cleanup','UiApply')}
+        'UiRestoreAppearance' {return @('UiRestoreAppearance')}
+        'ServicesPreview' {return @('ServicesPreview')}
+        'ServicesApply' {return @('ServicesApply')}
+        'ServicesRestore' {return @('ServicesRestore')}
+        'ServicesStatus' {return @('ServicesStatus')}
+        'Quick' {
+            if($IncludeServices){return @('Install','Cleanup','UiApply','ServicesApply')}
+            return @('Install','Cleanup','UiApply')
+        }
         'Activation' {return @('Activation')}
         default {throw 'Tác vụ không hợp lệ.'}
     }
@@ -69,6 +77,11 @@ function Get-RaidStepLabel([string]$Action) {
         'UpdateRestore' {return 'Khôi phục thiết lập cập nhật Windows'}
         'UiApply' {return 'Áp dụng giao diện tối giản'}
         'UiRestore' {return 'Khôi phục giao diện đã lưu'}
+        'UiRestoreAppearance' {return 'Khôi phục hình nền và màu nền từ bản cũ'}
+        'ServicesPreview' {return 'Xem trước các dịch vụ đã chọn'}
+        'ServicesApply' {return 'Tối ưu các dịch vụ đã chọn'}
+        'ServicesRestore' {return 'Khôi phục dịch vụ từ bản sao lưu'}
+        'ServicesStatus' {return 'Kiểm tra trạng thái dịch vụ và bản sao lưu'}
         'Activation' {return 'Mở công cụ riêng trong cửa sổ PowerShell'}
         default {return $Action}
     }
@@ -84,7 +97,7 @@ function Get-RaidStepStateLabel([string]$State) {
 }
 
 function Invoke-RaidChildModule([string]$ModuleName,[hashtable]$Parameters,[string]$RunFolder,[string]$StepName) {
-    $allowed=@('Debloat-Win11-RAID.ps1','Optimize-RAID-UI.ps1','Install-RAID-Apps.ps1','Manage-RAID-Update.ps1')
+    $allowed=@('Debloat-Win11-RAID.ps1','Optimize-RAID-UI.ps1','Install-RAID-Apps.ps1','Manage-RAID-Update.ps1','Optimize-RAID-Services.ps1')
     if($ModuleName -notin $allowed){throw 'Tên module không hợp lệ.'}
     $modulePath=Join-Path $PSScriptRoot $ModuleName
     if(-not (Test-Path -LiteralPath $modulePath -PathType Leaf)){throw ('Thiếu module: '+$ModuleName)}
@@ -147,7 +160,7 @@ try {
     } finally {$process.Dispose()}
 }
 
-function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder) {
+function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder,[string[]]$ServiceGroups=@()) {
     $resultPath=Join-Path $RunFolder ($Action+'.result.json')
     $parameters=@{ResultPath=$resultPath}
     $started=Get-Date
@@ -160,6 +173,11 @@ function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder)
         'UpdateRestore' {$module='Manage-RAID-Update.ps1';$parameters.Action='Restore'}
         'UiApply' {$module='Optimize-RAID-UI.ps1';$parameters.Action='Apply'}
         'UiRestore' {$module='Optimize-RAID-UI.ps1';$parameters.Action='Restore'}
+        'UiRestoreAppearance' {$module='Optimize-RAID-UI.ps1';$parameters.Action='RestoreAppearance'}
+        'ServicesPreview' {$module='Optimize-RAID-Services.ps1';$parameters.Action='Preview'}
+        'ServicesApply' {$module='Optimize-RAID-Services.ps1';$parameters.Action='Apply'}
+        'ServicesRestore' {$module='Optimize-RAID-Services.ps1';$parameters.Action='Restore'}
+        'ServicesStatus' {$module='Optimize-RAID-Services.ps1';$parameters.Action='Status'}
         'Activation' {
             Write-Host 'Mở lệnh bên thứ ba theo lựa chọn của người dùng. Đóng cửa sổ đó để quay lại công cụ.'
             $external=Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList '-NoProfile -Command "irm https://get.activated.win | iex"' -WindowStyle Normal -Wait -PassThru
@@ -168,6 +186,7 @@ function Invoke-RaidTaskStep([string]$Action,[string[]]$Apps,[string]$RunFolder)
         }
         default {throw 'Tác vụ không hợp lệ.'}
     }
+    if($module -eq 'Optimize-RAID-Services.ps1' -and $ServiceGroups.Count){$parameters.Groups=@($ServiceGroups)}
     $child=Invoke-RaidChildModule -ModuleName $module -Parameters $parameters -RunFolder $RunFolder -StepName $Action
     if(-not (Test-Path -LiteralPath $resultPath -PathType Leaf)){
         throw ('Module '+$module+' không trả kết quả có cấu trúc; xem nhật ký. Mã thoát: '+$child.ExitCode)
@@ -190,7 +209,22 @@ function Invoke-RaidTaskRequest([string]$Path) {
     $request=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($fullPath,[Text.Encoding]::UTF8))
     $taskGuid=[guid]::Empty
     if(-not [guid]::TryParse([string]$request.TaskId,[ref]$taskGuid)){throw 'Mã tác vụ không hợp lệ.'}
-    $plan=@(Get-RaidTaskPlan ([string]$request.Action))
+    $includeServices=$false
+    if($request.PSObject.Properties['IncludeServices']){
+        if($request.IncludeServices -isnot [bool]){throw 'IncludeServices phải là giá trị true hoặc false.'}
+        $includeServices=$request.IncludeServices
+    }
+    $serviceGroups=@()
+    if($request.PSObject.Properties['ServiceGroups']){
+        if($request.ServiceGroups -isnot [array] -or -not $request.ServiceGroups.Count){throw 'Danh sách nhóm dịch vụ phải là mảng không rỗng.'}
+        foreach($group in $request.ServiceGroups){
+            if($group -isnot [string] -or $group -notin @('OptionalWindows','Xbox','Printing','Search','ConnectedDevices','Diagnostics')){
+                throw 'Nhóm dịch vụ không hợp lệ.'
+            }
+        }
+        $serviceGroups=@($request.ServiceGroups | Select-Object -Unique)
+    }
+    $plan=@(Get-RaidTaskPlan -Action ([string]$request.Action) -IncludeServices $includeServices)
     $apps=@($request.Apps | Where-Object {$_})
     if(@($apps|Where-Object {$_ -notin @('Chrome','WinRAR','DotNet8','VCx86','VCx64')}).Count){throw 'Danh sách phần mềm không hợp lệ.'}
     if($request.Action -in @('Install','Quick') -and -not $apps.Count){throw 'Chưa chọn phần mềm hoặc thư viện cần cài.'}
@@ -206,7 +240,8 @@ function Invoke-RaidTaskRequest([string]$Path) {
             $status.Message=Get-RaidStepLabel $stepAction
             Write-RaidTaskJson $statusPath $status
             Write-Host ('--- '+$status.Step+'/'+$status.TotalSteps+': '+$status.Message+' ---')
-            try {$step=Invoke-RaidTaskStep -Action $stepAction -Apps $apps -RunFolder $runFolder}
+            $stepServiceGroups=if($request.Action -eq 'Quick' -and $stepAction -eq 'ServicesApply'){@('OptionalWindows','Xbox')}else{@($serviceGroups)}
+            try {$step=Invoke-RaidTaskStep -Action $stepAction -Apps $apps -RunFolder $runFolder -ServiceGroups @($stepServiceGroups)}
             catch {$step=[pscustomobject]@{Action=$stepAction;Name=(Get-RaidStepLabel $stepAction);State='Failed';DisplayState='Lỗi';Success=$false;Partial=$false;Message=$_.Exception.GetBaseException().Message;RebootRequired=$false;ExitCode=1;DurationSeconds=$null;ModuleResult=$null;OutputPath=$null;ErrorPath=$null;ErrorDetailsPath=$null};Write-Host $step.Message -ForegroundColor Yellow}
             $status.Results=@($status.Results)+@($step)
             $status.RebootRequired=$status.RebootRequired -or $step.RebootRequired
