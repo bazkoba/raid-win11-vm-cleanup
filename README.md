@@ -1,4 +1,4 @@
-# RAID VM Toolkit — bảng điều khiển tiếng Việt
+﻿# RAID VM Toolkit — bảng điều khiển tiếng Việt
 
 Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Legends qua Plarium Play**. Một lệnh mở toàn bộ công cụ; chọn chức năng bằng nút bấm, không phải nhớ từng lệnh riêng.
 
@@ -7,10 +7,12 @@ Dành cho Tuấn dùng **máy ảo Windows 11 x64 để chạy RAID: Shadow Lege
 Trong **máy ảo**, mở **Windows PowerShell**, bằng đúng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Start-RAID-Toolkit.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/3e56dc22178e47c571479496c7efb2162c0de1c3/Start-RAID-Toolkit.ps1' | iex
 ```
 
 Không cần tải ZIP, Git, GitHub Desktop hoặc cài bộ SDK. Máy ảo cần Internet để tải công cụ và bộ cài được chọn. Lệnh chỉ mở bảng điều khiển, chưa tự cài, gỡ hay đổi thiết lập. Các tác vụ cần quản trị sẽ yêu cầu UAC; dùng đúng tài khoản Windows hiện tại.
+
+**Bản sửa khởi chạy 1.0.1:** chỉ báo đã mở khi cửa sổ WinForms đã hiện và trả trạng thái sẵn sàng. Nếu cửa sổ lỗi, tiến trình thoát hoặc chờ quá 20 giây, PowerShell báo lỗi kèm đường dẫn nhật ký. Bản này cũng tránh bị phiên giao diện ẩn của bản cũ chặn lại.
 
 Chỉ chạy trong máy ảo. Công cụ chặn tên máy thật đã biết trong phiên thiết lập này; đây không phải cơ chế nhận diện mọi máy thật.
 
@@ -76,6 +78,7 @@ Chỉ khi chủ động chọn mục 6 và xác nhận, công cụ mở cửa s�
 | --- | --- |
 | Bộ công cụ đã kiểm tra | `%LOCALAPPDATA%\RaidVM-Toolkit\Releases\<commit>` |
 | Yêu cầu, kết quả JSON và log từng lần chạy | `%LOCALAPPDATA%\RaidVM-Toolkit\Runs\<ngày-giờ-mã>` |
+| Trạng thái và lỗi khởi chạy cửa sổ | `%LOCALAPPDATA%\RaidVM-Toolkit\Launches\<ngày-giờ-mã>` |
 | Sao lưu giao diện | `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json` |
 | Sao lưu chính sách Update | `C:\ProgramData\RaidVM-Toolkit\Update\before.json` |
 | Bộ cài/nhật ký cài phần mềm | `C:\ProgramData\RaidVM-Toolkit\Install\<ngày-giờ-mã>` |
