@@ -4,8 +4,18 @@ Long tasks run in a separate process; this UI only polls its status JSON.
 -Demo disables every task. -SmokeTest renders a non-mutating UI check and exits.
 #>
 [CmdletBinding()]
-param([switch]$Demo,[switch]$SmokeTest,[string]$SmokeImagePath)
+param([switch]$Demo,[switch]$SmokeTest,[string]$SmokeImagePath,[string]$StartupStatusPath,[string]$LaunchId)
 $ErrorActionPreference='Stop'
+$script:instanceMutex=$null
+$ownsMutex=$false
+function Write-ToolkitStartup([string]$State,[string]$Message,[string]$ErrorText='',[long]$WindowHandle=0){
+    if(-not $StartupStatusPath){return}
+    $startup=[pscustomobject]@{State=$State;LaunchId=$LaunchId;Pid=$PID;WindowHandle=$WindowHandle;Message=$Message;Error=$ErrorText}
+    $temporary=$StartupStatusPath+'.tmp'
+    [IO.File]::WriteAllText($temporary,(ConvertTo-Json -InputObject $startup -Depth 5),(New-Object Text.UTF8Encoding($true)))
+    Move-Item -LiteralPath $temporary -Destination $StartupStatusPath -Force
+}
+try{
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
@@ -14,18 +24,20 @@ if ($PSVersionTable.PSEdition -ne 'Desktop' -or [Threading.Thread]::CurrentThrea
     throw 'Open with Windows PowerShell 5.1 in STA mode, using Start-RAID-Toolkit.ps1.'
 }
 if (-not $Demo -and ($env:COMPUTERNAME -eq 'DESKTOP-IMKRT09' -or [Environment]::OSVersion.Version.Build -lt 22000 -or -not [Environment]::Is64BitProcess)) {
+    Write-ToolkitStartup 'Failed' 'Hãy mở công cụ bên trong máy ảo Windows 11 x64; máy thật đã biết bị chặn.'
     [Windows.Forms.MessageBox]::Show('Hãy mở công cụ bên trong máy ảo Windows 11 x64. Máy thật đã biết bị chặn.','RAID VM Toolkit','OK','Warning') | Out-Null
     return
 }
 $script:toolRoot=$PSScriptRoot
 $script:desktopSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$script:instanceMutex=$null
 if(-not $Demo){
-    $script:instanceMutex=New-Object Threading.Mutex($false,('Local\RaidVmToolkit-'+$script:desktopSid))
+    # A new namespace avoids an old hidden v1 instance blocking the fixed UI.
+    $script:instanceMutex=New-Object Threading.Mutex($false,('Local\RaidVmToolkit-2-'+$script:desktopSid))
     try{$ownsMutex=$script:instanceMutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$ownsMutex=$true}
     if(-not $ownsMutex){
-        [Windows.Forms.MessageBox]::Show('Công cụ đang mở trong tài khoản này. Hãy dùng cửa sổ đã mở.','RAID VM Toolkit')|Out-Null
-        $script:instanceMutex.Dispose();return
+        Write-ToolkitStartup 'AlreadyRunning' 'Công cụ đang mở trong tài khoản này. Dùng cửa sổ đã mở hoặc Alt+Tab để tìm.'
+        if(-not $StartupStatusPath){[Windows.Forms.MessageBox]::Show('Công cụ đang mở trong tài khoản này. Hãy dùng cửa sổ đã mở.','RAID VM Toolkit')|Out-Null}
+        return
     }
 }
 $script:currentRun=$null
@@ -245,6 +257,14 @@ $form.Add_FormClosing({param($sender,$eventArgs)
     if($script:workerProcess){$eventArgs.Cancel=$true;Show-ToolkitMessage 'Đang có tác vụ chạy. Hãy chờ kết quả trước khi đóng cửa sổ.' 'Warning'}
 })
 $form.Add_FormClosed({$script:pollTimer.Stop();$script:pollTimer.Dispose()})
+$form.Add_Shown({
+    try{
+        if(-not $script:form.Visible -or -not $script:form.IsHandleCreated){throw 'The toolkit window did not become visible.'}
+        Write-ToolkitStartup 'Ready' 'Cửa sổ RAID VM Toolkit đã hiển thị.' '' ($script:form.Handle.ToInt64())
+    }catch{
+        Write-ToolkitStartup 'Failed' 'Không xác nhận được cửa sổ công cụ.' ($_|Out-String)
+    }
+})
 Select-ToolkitSection 'Cleanup';Set-ToolkitBusy $false
 if($SmokeTest){
     $smokeTimer=New-Object Windows.Forms.Timer;$smokeTimer.Interval=1000
@@ -261,5 +281,11 @@ if($SmokeTest){
 }
 try{[Windows.Forms.Application]::Run($form)}finally{
     $form.Dispose()
-    if($script:instanceMutex){try{$script:instanceMutex.ReleaseMutex()}catch{};$script:instanceMutex.Dispose()}
+}
+}catch{
+    $startupError=($_|Out-String)+"`r`n"+$_.ScriptStackTrace
+    try{Write-ToolkitStartup 'Failed' $_.Exception.GetBaseException().Message $startupError}catch{}
+    throw
+}finally{
+    if($script:instanceMutex){if($ownsMutex){try{$script:instanceMutex.ReleaseMutex()}catch{}};$script:instanceMutex.Dispose()}
 }
