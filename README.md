@@ -14,14 +14,17 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 Trong **máy ảo**, mở Windows PowerShell bằng tài khoản đang đăng nhập Desktop, rồi dán:
 
 ```powershell
-irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Optimize-RAID-UI.ps1' | iex
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/51440316f462c9d752bb9c35c987afead536eed3/Optimize-RAID-UI.ps1' | iex
 ```
 
 | Phím | Chức năng của menu giao diện |
 | --- | --- |
 | **4** | Áp dụng giao diện tối giản |
 | **5** | Khôi phục giao diện đã lưu trước khi áp dụng |
+| **6** | Mở công cụ MAS bằng lệnh `irm https://get.activated.win \| iex` do người dùng yêu cầu |
 | **0** | Thoát |
+
+**Phím 6** mở một cửa sổ PowerShell riêng và chạy đúng lệnh trên. Đây là công cụ bên thứ ba từ `get.activated.win`/Massgrave, có thể yêu cầu quyền administrator; script của repo chỉ mở công cụ, không tự chọn phương thức kích hoạt hay xác nhận kích hoạt thành công. **Phím 5 chỉ khôi phục giao diện, không hoàn tác các thay đổi do MAS thực hiện.** Mục 6 không chạy khi chọn 4 hoặc 5. Chưa chạy công cụ này trên máy thật hoặc máy ảo trong kiểm thử.
 
 **Phím 4 áp dụng cùng lúc:**
 
@@ -40,12 +43,12 @@ Menu này áp dụng cho **tài khoản Windows hiện tại**; không mở Powe
 Muốn áp dụng thẳng không hiện menu, **sau khi đã hoàn tất chép file và biết Explorer sẽ được tải lại**, dùng:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Optimize-RAID-UI.ps1'))) -Action Apply
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/51440316f462c9d752bb9c35c987afead536eed3/Optimize-RAID-UI.ps1'))) -Action Apply
 ```
 
 Đổi `Apply` thành `Restore` để khôi phục, hoặc `Preview` để chỉ xem danh sách thay đổi.
 
-Đây là **menu giao diện riêng**. Nó không gỡ/cài app, không thay đổi sleep hoặc Windows Update. Ẩn Widgets không bảo đảm toàn bộ thành phần Widgets ngừng chạy nền; không ép gỡ gói hệ thống hoặc phần mềm ghim sẵn. Một số hiệu ứng hiện đại hoặc chính sách quản trị có thể không tuân theo thiết lập này.
+Các mục **4/5** của menu chỉ chỉnh/khôi phục giao diện; không gỡ/cài app, không thay đổi sleep hoặc Windows Update. Mục **6** chạy công cụ ngoài theo mô tả trên. Ẩn Widgets không bảo đảm toàn bộ thành phần Widgets ngừng chạy nền; các mục giao diện không ép gỡ gói hệ thống hoặc phần mềm ghim sẵn. Một số hiệu ứng hiện đại hoặc chính sách quản trị có thể không tuân theo thiết lập này.
 
 Đã kiểm tra bằng Windows PowerShell 5.1: cú pháp, biên dịch phần gọi API Windows, các lệnh đọc trạng thái, và sao lưu/khôi phục registry qua JSON (gồm giá trị chưa tồn tại, DWORD, chuỗi, chuỗi mở rộng và dữ liệu nhị phân) trên khóa thử riêng. Chưa thực thi Apply/Restore lên giao diện máy ảo trong kiểm thử; chưa có ảnh xác nhận giao diện sau áp dụng.
 
@@ -148,4 +151,4 @@ Các script đã được phân tích cú pháp bằng Windows PowerShell. Đã 
 - [Microsoft: Taskbar settings resource](https://github.com/microsoft/winget-dsc/blob/main/resources/Microsoft.Windows.Developer/Microsoft.Windows.Developer.psm1)
 - [Microsoft: SystemParametersInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
 
-`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên. `Optimize-RAID-UI.ps1` chỉ chỉnh giao diện bằng registry/API Windows. Không tải công cụ dọn hệ thống hoặc chỉnh taskbar của bên thứ ba.
+`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên. Các mục 4/5 trong `Optimize-RAID-UI.ps1` chỉnh giao diện bằng registry/API Windows; riêng mục 6 mở lệnh MAS bên thứ ba do người dùng yêu cầu. Không dùng công cụ chỉnh taskbar của bên thứ ba.
