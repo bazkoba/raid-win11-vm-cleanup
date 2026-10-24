@@ -9,6 +9,46 @@ Hướng dẫn dành cho Tuấn dùng máy ảo Windows 11 chạy **RAID: Shadow
 - Đóng các app sắp gỡ, hoàn tất cập nhật đang chờ rồi khởi động lại nếu Windows yêu cầu.
 - Script có chặn tên máy thật đã biết trong lần thiết lập này. Đây không phải cơ chế nhận diện mọi máy thật; vẫn phải kiểm tra đang thao tác trong máy ảo.
 
+## Menu giao diện: chọn một lần để làm taskbar gọn hơn
+
+Trong **máy ảo**, mở Windows PowerShell bằng tài khoản đang đăng nhập Desktop, rồi dán:
+
+```powershell
+irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Optimize-RAID-UI.ps1' | iex
+```
+
+| Phím | Chức năng của menu giao diện |
+| --- | --- |
+| **4** | Áp dụng giao diện tối giản |
+| **5** | Khôi phục giao diện đã lưu trước khi áp dụng |
+| **0** | Thoát |
+
+**Phím 4 áp dụng cùng lúc:**
+
+- Đưa nút **Start và các icon taskbar về bên trái**, taskbar vẫn nằm dưới màn hình.
+- Ẩn **Widgets/thời tiết**, ô **Search** và nút **Task View**.
+- Tắt trong suốt, giảm animation và hiệu ứng bóng đổ mà Windows cho phép điều khiển.
+- Đổi hình nền sang **màu tối trơn**.
+- Giữ chữ dễ đọc, các app đang ghim trên taskbar, game và driver.
+
+**Trước khi chọn 4 hoặc 5:** hoàn tất việc chép file. Script sẽ tải lại Explorer để taskbar nhận thiết lập ngay; các cửa sổ File Explorer có thể đóng. Game không bị script chủ động tắt, nhưng nên áp dụng lúc chưa chơi để tránh gián đoạn thao tác.
+
+Thiết lập gốc được lưu tại `%LOCALAPPDATA%\RaidVM-UI\desktop-before.json`. Áp dụng lại không ghi đè bản gốc khi bản tối giản vẫn đang hoạt động. Phím 5 khôi phục các thiết lập mà script đã chỉnh; không cài lại các app đã bị gỡ bởi script dọn riêng.
+
+Menu này áp dụng cho **tài khoản Windows hiện tại**; không mở PowerShell bằng một tài khoản admin khác. Script có chặn tên máy thật đã biết, nhưng vẫn phải tự kiểm tra đang ở trong máy ảo.
+
+Muốn áp dụng thẳng không hiện menu, **sau khi đã hoàn tất chép file và biết Explorer sẽ được tải lại**, dùng:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/bazkoba/raid-win11-vm-cleanup/main/Optimize-RAID-UI.ps1'))) -Action Apply
+```
+
+Đổi `Apply` thành `Restore` để khôi phục, hoặc `Preview` để chỉ xem danh sách thay đổi.
+
+Đây là **menu giao diện riêng**. Nó không gỡ/cài app, không thay đổi sleep hoặc Windows Update. Ẩn Widgets không bảo đảm toàn bộ thành phần Widgets ngừng chạy nền; không ép gỡ gói hệ thống hoặc phần mềm ghim sẵn. Một số hiệu ứng hiện đại hoặc chính sách quản trị có thể không tuân theo thiết lập này.
+
+Đã kiểm tra bằng Windows PowerShell 5.1: cú pháp, biên dịch phần gọi API Windows, các lệnh đọc trạng thái, và sao lưu/khôi phục registry qua JSON (gồm giá trị chưa tồn tại, DWORD, chuỗi, chuỗi mở rộng và dữ liệu nhị phân) trên khóa thử riêng. Chưa thực thi Apply/Restore lên giao diện máy ảo trong kiểm thử; chưa có ảnh xác nhận giao diện sau áp dụng.
+
 ## Cách nhanh: một lệnh dọn app + cài Chrome và WinRAR
 
 Trong **máy ảo**, mở Start → tìm **Windows PowerShell** → **Run as administrator**. Tạo snapshot trước khi dọn, rồi dán nguyên dòng này và Enter:
@@ -105,5 +145,7 @@ Các script đã được phân tích cú pháp bằng Windows PowerShell. Đã 
 - [Microsoft: Remove-AppxProvisionedPackage](https://learn.microsoft.com/en-us/powershell/module/dism/remove-appxprovisionedpackage)
 - [Google: Chrome Enterprise download](https://chromeenterprise.google/download/)
 - [RARLAB: WinRAR downloads](https://www.rarlab.com/download.htm)
+- [Microsoft: Taskbar settings resource](https://github.com/microsoft/winget-dsc/blob/main/resources/Microsoft.Windows.Developer/Microsoft.Windows.Developer.psm1)
+- [Microsoft: SystemParametersInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
 
-`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên, không tải công cụ dọn hệ thống của bên thứ ba.
+`Debloat-Win11-RAID.ps1` chỉ dọn app. `Setup-RAID-VM.ps1` tải bản dọn đã cố định phiên bản và các bộ cài chính hãng nói trên. `Optimize-RAID-UI.ps1` chỉ chỉnh giao diện bằng registry/API Windows. Không tải công cụ dọn hệ thống hoặc chỉnh taskbar của bên thứ ba.
