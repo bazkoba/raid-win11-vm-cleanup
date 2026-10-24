@@ -1,0 +1,30 @@
+{
+  "Schema": 1,
+  "Version": "1.0.0",
+  "Files": [
+    {
+      "Name": "RAID-Toolkit.ps1",
+      "Sha256": "066399ec2efd580cb46ffbb8bddae3bb3287e17c8a2184cfd5fd3f2820e08942"
+    },
+    {
+      "Name": "Invoke-RAID-Task.ps1",
+      "Sha256": "20c9790f9fef2886d2fa6c69c238b34a33475c4c944f1659e2976e263356ce5a"
+    },
+    {
+      "Name": "Install-RAID-Apps.ps1",
+      "Sha256": "361b3dbcfd4b2a8ef8ee9b9d2ab8d78f75504736474186c09be7404eb997a699"
+    },
+    {
+      "Name": "Manage-RAID-Update.ps1",
+      "Sha256": "5fab541fe6fa57c93a02f6beb0c175f8ccd635da88fb5c181d336dcc3eb1195c"
+    },
+    {
+      "Name": "Debloat-Win11-RAID.ps1",
+      "Sha256": "c62371bb480f2f97e5f6059dbea02957a54c0e24614316931fba2f6ff76075a2"
+    },
+    {
+      "Name": "Optimize-RAID-UI.ps1",
+      "Sha256": "e57809f6c3390f1a24d9ddef38ff420c643797736062023e4c3956d231c80005"
+    }
+  ]
+}
